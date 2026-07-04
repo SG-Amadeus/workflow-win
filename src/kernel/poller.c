@@ -485,7 +485,7 @@ static void __poller_handle_read(struct __poller_node *node,
 static void __poller_handle_write(struct __poller_node *node,
 								  poller_t *poller)
 {
-	struct iovec *iov = node->data.write_iov;
+	struct iovec *v = node->data.write_iov;
 	size_t sum = 0;
 	ssize_t nleft;
 	int cnt;
@@ -493,8 +493,8 @@ static void __poller_handle_write(struct __poller_node *node,
 
 	while (node->data.iovcnt > 0)
 	{
-		cnt = iov->iov_len <= INT_MAX ? iov->iov_len : INT_MAX;
-		nleft = writev(node->data.fd, iov, cnt);
+		cnt = v->iov_len <= INT_MAX ? v->iov_len : INT_MAX;
+		nleft = writev(node->data.fd, v, cnt);
 		if (nleft < 0)
 		{
 			ret = errno == EAGAIN ? 0 : -1;
@@ -504,24 +504,24 @@ static void __poller_handle_write(struct __poller_node *node,
 		sum += nleft;
 		do
 		{
-			if (nleft >= iov->iov_len)
+			if (nleft >= v->iov_len)
 			{
-				nleft -= iov->iov_len;
-				iov->iov_base = (char *)iov->iov_base + iov->iov_len;
-				iov->iov_len = 0;
-				iov++;
+				nleft -= v->iov_len;
+				v->iov_base = (char *)v->iov_base + v->iov_len;
+				v->iov_len = 0;
+				v++;
 				node->data.iovcnt--;
 			}
 			else
 			{
-				iov->iov_base = (char *)iov->iov_base + nleft;
-				iov->iov_len -= nleft;
+				v->iov_base = (char *)v->iov_base + nleft;
+				v->iov_len -= nleft;
 				break;
 			}
 		} while (node->data.iovcnt > 0);
 	}
 
-	node->data.write_iov = iov;
+	node->data.write_iov = v;
 	if (node->data.iovcnt > 0 && ret >= 0)
 	{
 		if (sum == 0)
