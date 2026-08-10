@@ -1,5 +1,5 @@
 set_project("workflow")
-set_version("1.0.1")
+set_version("1.1.0")
 
 option("workflow_inc",  {description = "workflow inc", default = "$(projectdir)/_include"})
 option("workflow_lib",  {description = "workflow lib", default = "$(projectdir)/_lib"})
