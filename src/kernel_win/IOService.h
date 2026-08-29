@@ -1,13 +1,13 @@
 ﻿/*
- * V6 IOService upper-business contract.
+ * Windows IOService upper-business contract.
  *
- * This is the Windows file-I/O counterpart of the V6 Communicator header.
+ * This is the Windows file-I/O counterpart of the Communicator header.
  * It intentionally contains no ASIO/IOCP/backend type; all lower execution
- * is delegated to the V6 Runtime through Communicator::io_request().
+ * is delegated to the Windows runtime through Communicator::io_request().
  */
 
-#ifndef _V6_IOSERVICE_H_
-#define _V6_IOSERVICE_H_
+#ifndef _WORKFLOW_WIN_IOSERVICE_H_
+#define _WORKFLOW_WIN_IOSERVICE_H_
 
 #include <stddef.h>
 #include <stdint.h>
@@ -111,7 +111,7 @@ private:
 	friend class comm_file_io_op;
 };
 
-#endif /* _V6_IOSERVICE_H_ */
+#endif /* _WORKFLOW_WIN_IOSERVICE_H_ */
 
 
 

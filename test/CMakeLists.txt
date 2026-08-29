@@ -117,40 +117,40 @@ foreach(src ${TEST_LIST})
 	add_dependencies(check ${src})
 endforeach()
 
-# V6 dedicated kernel tests: Communicator and direct async-kernel lifecycle.
-set(V6_TEST_SOURCES
-	v6/communicator_unittest.cc
-	v6/async_core_unittest.cc
+# Windows-specific tests: Communicator and direct async-kernel lifecycle.
+set(WINDOWS_TEST_SOURCES
+	windows/communicator_unittest.cc
+	windows/async_core_unittest.cc
 )
-set(V6_TEST_NAMES
-	v6_communicator_unittest
-	v6_async_core_unittest
+set(WINDOWS_TEST_NAMES
+	windows_communicator_unittest
+	windows_async_core_unittest
 )
 
-list(LENGTH V6_TEST_SOURCES V6_TEST_COUNT)
-math(EXPR V6_TEST_COUNT_MINUS_ONE "${V6_TEST_COUNT} - 1")
-foreach(i RANGE 0 ${V6_TEST_COUNT_MINUS_ONE})
-	list(GET V6_TEST_SOURCES ${i} V6_TEST_SRC)
-	list(GET V6_TEST_NAMES ${i} V6_TEST_NAME)
-	add_executable(${V6_TEST_NAME} ${V6_TEST_SRC})
+list(LENGTH WINDOWS_TEST_SOURCES WINDOWS_TEST_COUNT)
+math(EXPR WINDOWS_TEST_COUNT_MINUS_ONE "${WINDOWS_TEST_COUNT} - 1")
+foreach(i RANGE 0 ${WINDOWS_TEST_COUNT_MINUS_ONE})
+	list(GET WINDOWS_TEST_SOURCES ${i} WINDOWS_TEST_SRC)
+	list(GET WINDOWS_TEST_NAMES ${i} WINDOWS_TEST_NAME)
+	add_executable(${WINDOWS_TEST_NAME} ${WINDOWS_TEST_SRC})
 	if (WIN32 AND NOT MINGW)
-		add_dependencies(${V6_TEST_NAME} workflow_refresh)
+		add_dependencies(${WINDOWS_TEST_NAME} workflow_refresh)
 	endif ()
-	target_include_directories(${V6_TEST_NAME} PRIVATE
+	target_include_directories(${WINDOWS_TEST_NAME} PRIVATE
 		${CMAKE_CURRENT_SOURCE_DIR}/../src/kernel_win
 	)
-	target_link_libraries(${V6_TEST_NAME} ${WORKFLOW_LIB} ${GTEST_LIB})
+	target_link_libraries(${WINDOWS_TEST_NAME} ${WORKFLOW_LIB} ${GTEST_LIB})
 	if (WIN32 AND NOT MINGW)
 		target_compile_definitions(
-			${V6_TEST_NAME} PRIVATE
+			${WINDOWS_TEST_NAME} PRIVATE
 			strdup=_strdup
 			strcasecmp=_stricmp
 			strncasecmp=_strnicmp
 		)
 	endif ()
-	add_test(${V6_TEST_NAME} ${V6_TEST_NAME})
-	set_tests_properties(${V6_TEST_NAME} PROPERTIES TIMEOUT 60)
-	add_dependencies(check ${V6_TEST_NAME})
+	add_test(${WINDOWS_TEST_NAME} ${WINDOWS_TEST_NAME})
+	set_tests_properties(${WINDOWS_TEST_NAME} PROPERTIES TIMEOUT 60)
+	add_dependencies(check ${WINDOWS_TEST_NAME})
 endforeach()
 
 if (WIN32)

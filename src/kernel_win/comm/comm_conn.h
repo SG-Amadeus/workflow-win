@@ -25,8 +25,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define V6_ENCODE_IOV_MAX 2048
-#define V6_READ_BUFSIZE (64 * 1024)
+#define COMM_ENCODE_IOV_MAX 2048
+#define COMM_READ_BUFSIZE (64 * 1024)
 
 enum
 {
@@ -146,7 +146,7 @@ public:
 	udp_socket socket;
 	udp_socket *sock;
 	volatile LONG refs;
-	char buf[V6_READ_BUFSIZE];
+	char buf[COMM_READ_BUFSIZE];
 	struct sockaddr_storage from;
 	int fromlen;
 

@@ -717,7 +717,7 @@ static bool repo_root_cert_path(char *cert, size_t cert_size,
 
 } /* namespace */
 
-TEST(V6Communicator, ClientRequestEcho)
+TEST(WindowsCommunicator, ClientRequestEcho)
 {
 	ServerThread server;
 	ASSERT_TRUE(server.start());
@@ -738,7 +738,7 @@ TEST(V6Communicator, ClientRequestEcho)
 	server.join();
 }
 
-TEST(V6Communicator, ServerBindAcceptReply)
+TEST(WindowsCommunicator, ServerBindAcceptReply)
 {
 	SOCKET tmp = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	ASSERT_TRUE(tmp != INVALID_SOCKET);
@@ -788,7 +788,7 @@ TEST(V6Communicator, ServerBindAcceptReply)
 	comm.deinit();
 }
 
-TEST(V6Communicator, UdpClientRequestEcho)
+TEST(WindowsCommunicator, UdpClientRequestEcho)
 {
 	SOCKET server_sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	ASSERT_TRUE(server_sock != INVALID_SOCKET);
@@ -831,7 +831,7 @@ TEST(V6Communicator, UdpClientRequestEcho)
 	closesocket(server_sock);
 }
 
-TEST(V6Communicator, UdpServerBindRecvReply)
+TEST(WindowsCommunicator, UdpServerBindRecvReply)
 {
 	SOCKET tmp = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	ASSERT_TRUE(tmp != INVALID_SOCKET);
@@ -882,7 +882,7 @@ TEST(V6Communicator, UdpServerBindRecvReply)
 	comm.deinit();
 }
 
-TEST(V6Communicator, FileFsyncCompletesThroughIOService)
+TEST(WindowsCommunicator, FileFsyncCompletesThroughIOService)
 {
 	char directory[MAX_PATH];
 	char path[MAX_PATH];
@@ -912,7 +912,7 @@ TEST(V6Communicator, FileFsyncCompletesThroughIOService)
 	::DeleteFileA(path);
 }
 
-TEST(V6Communicator, FileReadWriteVectorOperationsThroughIOService)
+TEST(WindowsCommunicator, FileReadWriteVectorOperationsThroughIOService)
 {
 	char directory[MAX_PATH];
 	char path[MAX_PATH];
@@ -1005,7 +1005,7 @@ TEST(V6Communicator, FileReadWriteVectorOperationsThroughIOService)
 	::DeleteFileA(path);
 }
 
-TEST(V6Communicator, SleepCompletes)
+TEST(WindowsCommunicator, SleepCompletes)
 {
 	Communicator comm;
 	ASSERT_EQ(comm.init(1), 0);
@@ -1020,7 +1020,7 @@ TEST(V6Communicator, SleepCompletes)
 	comm.deinit();
 }
 
-TEST(V6Communicator, UnsleepCompletesWithECANCELED)
+TEST(WindowsCommunicator, UnsleepCompletesWithECANCELED)
 {
 	Communicator comm;
 	ASSERT_EQ(comm.init(1), 0);
@@ -1036,7 +1036,7 @@ TEST(V6Communicator, UnsleepCompletesWithECANCELED)
 	comm.deinit();
 }
 
-TEST(V6Communicator, UnsleepAfterCompletionReturnsENOENT)
+TEST(WindowsCommunicator, UnsleepAfterCompletionReturnsENOENT)
 {
 	Communicator comm;
 	ASSERT_EQ(comm.init(1), 0);
@@ -1052,7 +1052,7 @@ TEST(V6Communicator, UnsleepAfterCompletionReturnsENOENT)
 	comm.deinit();
 }
 
-TEST(V6Communicator, DeinitDuringSleepDisrupts)
+TEST(WindowsCommunicator, DeinitDuringSleepDisrupts)
 {
 	Communicator comm;
 	ASSERT_EQ(comm.init(1), 0);
@@ -1066,7 +1066,7 @@ TEST(V6Communicator, DeinitDuringSleepDisrupts)
 	EXPECT_EQ(session.state, SS_STATE_DISRUPTED);
 }
 
-TEST(V6Communicator, TcpImmediateUnbindDrainsAccept)
+TEST(WindowsCommunicator, TcpImmediateUnbindDrainsAccept)
 {
 	Communicator comm;
 	ASSERT_EQ(0, comm.init(1));
@@ -1084,7 +1084,7 @@ TEST(V6Communicator, TcpImmediateUnbindDrainsAccept)
 	EXPECT_TRUE(service.unbound.load());
 }
 
-TEST(V6Communicator, UdpImmediateUnbindDrainsReceive)
+TEST(WindowsCommunicator, UdpImmediateUnbindDrainsReceive)
 {
 	Communicator comm;
 	ASSERT_EQ(0, comm.init(1));
@@ -1103,7 +1103,7 @@ TEST(V6Communicator, UdpImmediateUnbindDrainsReceive)
 	EXPECT_TRUE(service.unbound.load());
 }
 
-TEST(V6Communicator, DeinitUnbindsLiveTcpService)
+TEST(WindowsCommunicator, DeinitUnbindsLiveTcpService)
 {
 	Communicator comm;
 	ASSERT_EQ(0, comm.init(1));
@@ -1120,7 +1120,7 @@ TEST(V6Communicator, DeinitUnbindsLiveTcpService)
 	EXPECT_TRUE(service.unbound.load());
 }
 
-TEST(V6Communicator, DeinitUnbindsLiveUdpService)
+TEST(WindowsCommunicator, DeinitUnbindsLiveUdpService)
 {
 	Communicator comm;
 	ASSERT_EQ(0, comm.init(1));
@@ -1138,7 +1138,7 @@ TEST(V6Communicator, DeinitUnbindsLiveUdpService)
 	EXPECT_TRUE(service.unbound.load());
 }
 
-TEST(V6Communicator, PassiveReplyMatchesLinuxCallbackContract)
+TEST(WindowsCommunicator, PassiveReplyMatchesLinuxCallbackContract)
 {
 	SOCKET tmp = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	ASSERT_TRUE(tmp != INVALID_SOCKET);
@@ -1182,7 +1182,7 @@ TEST(V6Communicator, PassiveReplyMatchesLinuxCallbackContract)
 	EXPECT_TRUE(service.unbound.load());
 }
 
-TEST(V6Communicator, PassiveShutdownDoesNotInvokeCompletionCallback)
+TEST(WindowsCommunicator, PassiveShutdownDoesNotInvokeCompletionCallback)
 {
 	SOCKET tmp = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	ASSERT_TRUE(tmp != INVALID_SOCKET);
@@ -1224,7 +1224,7 @@ TEST(V6Communicator, PassiveShutdownDoesNotInvokeCompletionCallback)
 	EXPECT_TRUE(service.unbound.load());
 }
 
-TEST(V6Communicator, ClientKeepaliveReuse)
+TEST(WindowsCommunicator, ClientKeepaliveReuse)
 {
 	EchoTwiceServerThread server;
 	ASSERT_TRUE(server.start());
@@ -1257,7 +1257,7 @@ TEST(V6Communicator, ClientKeepaliveReuse)
 	server.join();
 }
 
-TEST(V6Communicator, ServerKeepaliveSessionReuse)
+TEST(WindowsCommunicator, ServerKeepaliveSessionReuse)
 {
 	SOCKET tmp = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	ASSERT_TRUE(tmp != INVALID_SOCKET);
@@ -1300,7 +1300,7 @@ TEST(V6Communicator, ServerKeepaliveSessionReuse)
 	comm.deinit();
 }
 
-TEST(V6Communicator, ConnectFailureReportsError)
+TEST(WindowsCommunicator, ConnectFailureReportsError)
 {
 	Communicator comm;
 	ASSERT_EQ(comm.init(1), 0);
@@ -1332,7 +1332,7 @@ TEST(V6Communicator, ConnectFailureReportsError)
 	comm.deinit();
 }
 
-TEST(V6Communicator, FirstTimeoutReportsETIMEDOUT)
+TEST(WindowsCommunicator, FirstTimeoutReportsETIMEDOUT)
 {
 	SilentServerThread server;
 	ASSERT_TRUE(server.start());
@@ -1354,7 +1354,7 @@ TEST(V6Communicator, FirstTimeoutReportsETIMEDOUT)
 	server.join();
 }
 
-TEST(V6Communicator, FirstTimeoutOverridesResponseTimeout)
+TEST(WindowsCommunicator, FirstTimeoutOverridesResponseTimeout)
 {
 	SOCKET listen_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	ASSERT_TRUE(listen_sock != INVALID_SOCKET);
@@ -1399,7 +1399,7 @@ TEST(V6Communicator, FirstTimeoutOverridesResponseTimeout)
 	server.join();
 }
 
-TEST(V6Communicator, ReceiveTimeoutConsumedByFirstRead)
+TEST(WindowsCommunicator, ReceiveTimeoutConsumedByFirstRead)
 {
 	SOCKET listen_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	ASSERT_TRUE(listen_sock != INVALID_SOCKET);
@@ -1443,7 +1443,7 @@ TEST(V6Communicator, ReceiveTimeoutConsumedByFirstRead)
 	server.join();
 }
 
-TEST(V6Communicator, TotalTimeoutDeadline)
+TEST(WindowsCommunicator, TotalTimeoutDeadline)
 {
 	SOCKET listen_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	ASSERT_TRUE(listen_sock != INVALID_SOCKET);
@@ -1491,7 +1491,7 @@ TEST(V6Communicator, TotalTimeoutDeadline)
 	server.join();
 }
 
-TEST(V6Communicator, ReceiveTimeoutWithUnlimitedResponseIsFirstReadOnly)
+TEST(WindowsCommunicator, ReceiveTimeoutWithUnlimitedResponseIsFirstReadOnly)
 {
 	SOCKET listen_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	ASSERT_TRUE(listen_sock != INVALID_SOCKET);
@@ -1539,7 +1539,7 @@ TEST(V6Communicator, ReceiveTimeoutWithUnlimitedResponseIsFirstReadOnly)
 	server.join();
 }
 
-TEST(V6Communicator, RenewResetsDeadline)
+TEST(WindowsCommunicator, RenewResetsDeadline)
 {
 	SOCKET listen_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	ASSERT_TRUE(listen_sock != INVALID_SOCKET);
@@ -1588,7 +1588,7 @@ TEST(V6Communicator, RenewResetsDeadline)
 	server.join();
 }
 
-TEST(V6Communicator, ListenTimeoutKeepsAccepting)
+TEST(WindowsCommunicator, ListenTimeoutKeepsAccepting)
 {
 	SOCKET tmp = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	ASSERT_TRUE(tmp != INVALID_SOCKET);
@@ -1626,7 +1626,7 @@ TEST(V6Communicator, ListenTimeoutKeepsAccepting)
 	comm.deinit();
 }
 
-TEST(V6Communicator, SslClientServerEcho)
+TEST(WindowsCommunicator, SslClientServerEcho)
 {
 	char cert[MAX_PATH], key[MAX_PATH];
 	ASSERT_TRUE(repo_root_cert_path(cert, sizeof cert, key, sizeof key));
@@ -1672,7 +1672,7 @@ TEST(V6Communicator, SslClientServerEcho)
 	SSL_CTX_free(ctx);
 }
 
-TEST(V6Communicator, FileBlockingFallbackFsync)
+TEST(WindowsCommunicator, FileBlockingFallbackFsync)
 {
 	char directory[MAX_PATH];
 	char path[MAX_PATH];
@@ -1704,7 +1704,7 @@ TEST(V6Communicator, FileBlockingFallbackFsync)
 	::DeleteFileA(path);
 }
 
-TEST(V6Communicator, DeinitWithInflightRequestDrains)
+TEST(WindowsCommunicator, DeinitWithInflightRequestDrains)
 {
 	SilentServerThread server;
 	ASSERT_TRUE(server.start());

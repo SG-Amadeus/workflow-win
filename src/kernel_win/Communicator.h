@@ -1,14 +1,14 @@
 ﻿/*
- * V6 Communicator upper-business contract.
+ * Windows Communicator upper-business contract.
  *
  * This header follows the Linux Workflow upper business shape, adapted only
  * where Windows requires SOCKET/HANDLE types. It intentionally exposes no
- * ASIO/IOCP/backend type. All lower execution is delegated to the V6 async kernel
+ * ASIO/IOCP/backend type. All lower execution is delegated to the Windows async kernel
  * (see async/).
  */
 
-#ifndef _V6_COMMUNICATOR_H_
-#define _V6_COMMUNICATOR_H_
+#ifndef _WORKFLOW_WIN_COMMUNICATOR_H_
+#define _WORKFLOW_WIN_COMMUNICATOR_H_
 
 #include <stddef.h>
 #include <stdint.h>
@@ -340,7 +340,7 @@ private:
 	int io_request(IOSession *session);
 };
 
-#endif /* _V6_COMMUNICATOR_H_ */
+#endif /* _WORKFLOW_WIN_COMMUNICATOR_H_ */
 
 
 

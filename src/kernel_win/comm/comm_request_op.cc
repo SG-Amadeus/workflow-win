@@ -845,10 +845,10 @@ int comm_request_op::prepare_message_out(CommConnEntry *entry,
 		return -1;
 	}
 
-	int cnt = entry->session->out->encode(vectors, V6_ENCODE_IOV_MAX);
-	if ((unsigned int)cnt > V6_ENCODE_IOV_MAX)
+	int cnt = entry->session->out->encode(vectors, COMM_ENCODE_IOV_MAX);
+	if ((unsigned int)cnt > COMM_ENCODE_IOV_MAX)
 	{
-		if (cnt > V6_ENCODE_IOV_MAX)
+		if (cnt > COMM_ENCODE_IOV_MAX)
 			errno = EOVERFLOW;
 		return -1;
 	}
@@ -929,7 +929,7 @@ void comm_request_op::idle_timer_destroy(void *ctx)
 int comm_request_op::start_send(comm_request_op *self)
 {
 	CommConnEntry *entry = self->entry_;
-	struct iovec vectors[V6_ENCODE_IOV_MAX];
+	struct iovec vectors[COMM_ENCODE_IOV_MAX];
 	int cnt;
 	if (prepare_message_out(entry, vectors, &cnt) < 0)
 		return -1;
@@ -1024,7 +1024,7 @@ int comm_request_op::start_udp_read(comm_request_op *self)
 		comm_timeout_min(response_timeout, entry->session->receive_timeout());
 	composed_op_add_ref(self);
 	int ret = async_recvfrom_message_ex(entry->udp_sock, nullptr,
-		V6_READ_BUFSIZE, nullptr, nullptr,
+		COMM_READ_BUFSIZE, nullptr, nullptr,
 		&comm_request_op::read_message_filter, entry,
 		&comm_request_op::read_cb, self, timeout,
 		composed_op_cancellation_slot(self),
@@ -1076,7 +1076,7 @@ int comm_request_op::start_message_read(
 	int ret;
 	if (entry->ssl_sock)
 		ret = async_read_message_ssl_ex(
-			entry->ssl_sock, nullptr, V6_READ_BUFSIZE,
+			entry->ssl_sock, nullptr, COMM_READ_BUFSIZE,
 			&comm_request_op::read_message_filter, entry,
 			callback, self,
 			first_timeout, response_timeout, receive_timeout,
@@ -1084,7 +1084,7 @@ int comm_request_op::start_message_read(
 			destroy, &self->renew_requested_);
 	else
 		ret = async_read_message_ex(
-			entry->tcp, nullptr, V6_READ_BUFSIZE,
+			entry->tcp, nullptr, COMM_READ_BUFSIZE,
 			&comm_request_op::read_message_filter, entry,
 			callback, self,
 			first_timeout, response_timeout, receive_timeout,
