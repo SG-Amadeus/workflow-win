@@ -1,4 +1,4 @@
-#include <signal.h>
+﻿#include <signal.h>
 #include <fcntl.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -14,11 +14,10 @@
 #endif
 
 #ifdef _WIN32
-#include <io.h>
-# define open _open
-# define O_RDONLY _O_RDONLY
-# define close _close
-# define lseek _lseek
+#include <WinSock2.h>
+#include <Windows.h>
+#else
+#include <unistd.h>
 #endif
 
 using namespace protocol;
@@ -29,7 +28,11 @@ void pread_callback(WFFileIOTask *task)
 	long ret = task->get_retval();
 	HttpResponse *resp = (HttpResponse *)task->user_data;
 
+#ifdef _WIN32
+	CloseHandle(args->file);
+#else
 	close(args->fd);
+#endif
 	if (task->get_state() != WFT_STATE_SUCCESS || ret < 0)
 	{
 		resp->set_status_code("503");
@@ -56,30 +59,49 @@ void process(WFHttpTask *server_task, const char *root)
 		abs_path += "index.html";
 
 	resp->add_header_pair("Server", "Sogou C++ Workflow Server");
-// ------ we will support fileio with iocp as soon as possible
-//	int fd = open(abs_path.c_str(), O_RDONLY);
-//	if (fd >= 0)
-//	{
-//		size_t size = lseek(fd, 0, SEEK_END);
-//		void *buf = malloc(size); /* As an example, assert(buf != NULL); */
-//		WFFileIOTask *pread_task;
-//
-//		pread_task = WFTaskFactory::create_pread_task(fd, buf, size, 0,
-//													  pread_callback);
-//		/* To implement a more complicated server, please use series' context
-//		 * instead of tasks' user_data to pass/store internal data. */
-//		pread_task->user_data = resp;	/* pass resp pointer to pread task. */
-//		server_task->user_data = buf;	/* to free() in callback() */
-//		server_task->set_callback([](WFHttpTask *t){ free(t->user_data); });
-//		series_of(server_task)->push_back(pread_task);
-//	}
-//	else
+#ifdef _WIN32
+	HANDLE file = CreateFileA(abs_path.c_str(), GENERIC_READ,
+							  FILE_SHARE_READ, NULL, OPEN_EXISTING,
+							  FILE_ATTRIBUTE_NORMAL, NULL);
+	if (file != INVALID_HANDLE_VALUE)
+	{
+		LARGE_INTEGER sz;
+		GetFileSizeEx(file, &sz);
+		size_t size = (size_t)sz.QuadPart;
+		void *buf = malloc(size ? size : 1);
+		WFFileIOTask *pread_task;
+
+		pread_task = WFTaskFactory::create_pread_task(file, buf, size, 0,
+													  pread_callback);
+		pread_task->user_data = resp;
+		server_task->user_data = buf;
+		server_task->set_callback([](WFHttpTask *t){ free(t->user_data); });
+		series_of(server_task)->push_back(pread_task);
+	}
+	else
+#else
+	int fd = open(abs_path.c_str(), O_RDONLY);
+	if (fd >= 0)
+	{
+		size_t size = lseek(fd, 0, SEEK_END);
+		lseek(fd, 0, SEEK_SET);
+		void *buf = malloc(size ? size : 1);
+		WFFileIOTask *pread_task;
+
+		pread_task = WFTaskFactory::create_pread_task(fd, buf, size, 0,
+													  pread_callback);
+		pread_task->user_data = resp;
+		server_task->user_data = buf;
+		server_task->set_callback([](WFHttpTask *t){ free(t->user_data); });
+		series_of(server_task)->push_back(pread_task);
+	}
+	else
+#endif
 	{
 		resp->set_status_code("404");
 		resp->append_output_body("<html>404 Not Found.</html>");
 	}
 }
-
 void sig_handler(int signo) { }
 
 int main(int argc, char *argv[])

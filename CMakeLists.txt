@@ -40,7 +40,6 @@ macro(makeLink src dest target)
 	add_custom_command(
 		TARGET ${target} PRE_BUILD
 		COMMAND ${CMAKE_COMMAND} -E copy_if_different ${src} ${dest}
-		DEPENDS ${dest}
 	)
 endmacro()
 
@@ -55,37 +54,23 @@ foreach(header_file ${INCLUDE_HEADERS} ${INCLUDE_KERNEL_HEADERS})
 	makeLink(${PROJECT_SOURCE_DIR}/${header_file} ${INC_DIR}/${PROJECT_NAME}/${file_name} LINK_HEADERS)
 endforeach()
 
-if (WIN32)
-	if (WORKFLOW_BUILD_STATIC_RUNTIME)
-		set(CompilerFlags
-				CMAKE_CXX_FLAGS
-				CMAKE_CXX_FLAGS_DEBUG
-				CMAKE_CXX_FLAGS_RELEASE
-				CMAKE_CXX_FLAGS_MINSIZEREL
-				CMAKE_C_FLAGS
-				CMAKE_C_FLAGS_DEBUG
-				CMAKE_C_FLAGS_RELEASE
-				CMAKE_C_FLAGS_MINSIZEREL
-				)
-		if (MINGW)
-		else ()
-			foreach(CompilerFlag ${CompilerFlags})
-				string(REPLACE "/MD" "/MT" ${CompilerFlag} "${${CompilerFlag}}")
-			endforeach ()
-		endif ()
-	endif ()
+if (WIN32 AND NOT MINGW AND WORKFLOW_BUILD_STATIC_RUNTIME)
+	set(CompilerFlags
+			CMAKE_CXX_FLAGS
+			CMAKE_CXX_FLAGS_DEBUG
+			CMAKE_CXX_FLAGS_RELEASE
+			CMAKE_CXX_FLAGS_RELWITHDEBINFO
+			CMAKE_CXX_FLAGS_MINSIZEREL
+			CMAKE_C_FLAGS
+			CMAKE_C_FLAGS_DEBUG
+			CMAKE_C_FLAGS_RELEASE
+			CMAKE_C_FLAGS_RELWITHDEBINFO
+			CMAKE_C_FLAGS_MINSIZEREL
+			)
+	foreach(CompilerFlag ${CompilerFlags})
+		string(REPLACE "/MD" "/MT" ${CompilerFlag} "${${CompilerFlag}}")
+	endforeach ()
 endif ()
-
-
-message("CMAKE_C_FLAGS_DEBUG is ${CMAKE_C_FLAGS_DEBUG}")
-message("CMAKE_C_FLAGS_RELEASE is ${CMAKE_C_FLAGS_RELEASE}")
-message("CMAKE_C_FLAGS_RELWITHDEBINFO is ${CMAKE_C_FLAGS_RELWITHDEBINFO}")
-message("CMAKE_C_FLAGS_MINSIZEREL is ${CMAKE_C_FLAGS_MINSIZEREL}")
-
-message("CMAKE_CXX_FLAGS_DEBUG is ${CMAKE_CXX_FLAGS_DEBUG}")
-message("CMAKE_CXX_FLAGS_RELEASE is ${CMAKE_CXX_FLAGS_RELEASE}")
-message("CMAKE_CXX_FLAGS_RELWITHDEBINFO is ${CMAKE_CXX_FLAGS_RELWITHDEBINFO}")
-message("CMAKE_CXX_FLAGS_MINSIZEREL is ${CMAKE_CXX_FLAGS_MINSIZEREL}")
 
 if (MINGW)
 	set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS}   -Wall -fPIC -pipe -std=gnu90")

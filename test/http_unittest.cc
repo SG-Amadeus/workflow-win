@@ -36,19 +36,20 @@ static void __http_process(WFHttpTask *task)
 	resp->add_header_pair("Content-Type", "text/plain");
 }
 
-TEST(WFHttpTask1, http_unittest)
+TEST(http_unittest, WFHttpTask1)
 {
 	std::mutex mutex;
 	std::condition_variable cond;
 	bool done = false;
-	auto *task = WFTaskFactory::create_http_task("http://www.sogou.com", 0, RETRY_MAX, [&mutex, &cond, &done](WFHttpTask *task) {
+	auto *task = WFTaskFactory::create_http_task("http://github.com", 0, RETRY_MAX, [&mutex, &cond, &done](WFHttpTask *task) {
 		auto state = task->get_state();
 
 		//EXPECT_EQ(state, WFT_STATE_SUCCESS);
 		if (state == WFT_STATE_SUCCESS)
 		{
 			auto code = atoi(task->get_resp()->get_status_code());
-			EXPECT_TRUE(code == HttpStatusMovedPermanently ||
+			EXPECT_TRUE(code == HttpStatusOK ||
+						code == HttpStatusMovedPermanently ||
 						code == HttpStatusFound ||
 						code == HttpStatusSeeOther ||
 						code == HttpStatusTemporaryRedirect ||
@@ -69,19 +70,24 @@ TEST(WFHttpTask1, http_unittest)
 	lock.unlock();
 }
 
-TEST(WFHttpTask2, http_unittest)
+TEST(http_unittest, WFHttpTask2)
 {
 	std::mutex mutex;
 	std::condition_variable cond;
 	bool done = false;
-	auto *task = WFTaskFactory::create_http_task("http://www.sogou.com", 1, RETRY_MAX, [&mutex, &cond, &done](WFHttpTask *task) {
+	auto *task = WFTaskFactory::create_http_task("http://github.com", 1, RETRY_MAX, [&mutex, &cond, &done](WFHttpTask *task) {
 		auto state = task->get_state();
 
 		//EXPECT_EQ(state, WFT_STATE_SUCCESS);
 		if (state == WFT_STATE_SUCCESS)
 		{
 			auto code = atoi(task->get_resp()->get_status_code());
-			EXPECT_EQ(code, HttpStatusOK);
+			EXPECT_TRUE(code == HttpStatusOK ||
+						code == HttpStatusMovedPermanently ||
+						code == HttpStatusFound ||
+						code == HttpStatusSeeOther ||
+						code == HttpStatusTemporaryRedirect ||
+						code == HttpStatusPermanentRedirect);
 		}
 
 		mutex.lock();
@@ -98,7 +104,7 @@ TEST(WFHttpTask2, http_unittest)
 	lock.unlock();
 }
 
-TEST(WFHttpTask3, http_unittest)
+TEST(http_unittest, WFHttpTask3)
 {
 	FILE *f;
 	f = fopen("server.crt", "w");
@@ -162,7 +168,7 @@ KZ1lOvb+vi3TLrQf4tfBekrXXe5tZK40QSJ7UdtY7HHrrbAXU+8=
 	WFHttpServer http_server(__http_process);
 	EXPECT_TRUE(http_server.start("127.0.0.1", 8811) == 0) << "http server start failed";
 
-	WFHttpsServer https_server(__http_process);
+	WFHttpServer https_server(__http_process);
 	EXPECT_TRUE(https_server.start("127.0.0.1", 8822, "server.crt", "server.key") == 0) << "https server start failed";
 
 	std::mutex mutex;

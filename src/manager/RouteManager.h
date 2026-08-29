@@ -73,7 +73,13 @@ public:
 		int state;
 
 	private:
-		virtual WFConnection *new_connection(int connect_fd)
+		virtual WFConnection *new_connection(
+#ifndef _WIN32
+			int connect_fd
+#else
+			SOCKET connect_socket
+#endif
+		)
 		{
 			return new WFConnection;
 		}

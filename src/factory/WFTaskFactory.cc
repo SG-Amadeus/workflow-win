@@ -22,6 +22,7 @@
 #include <utility>
 #include <string>
 #include <mutex>
+#include <atomic>
 #include "list.h"
 #include "rbtree.h"
 #include "WFGlobal.h"
@@ -65,6 +66,33 @@ WFTimerTask *WFTaskFactory::create_timer_task(unsigned int microseconds,
 	return WFTaskFactory::create_timer_task(microseconds / 1000000,
 											microseconds % 1000000 * 1000,
 											std::move(callback));
+}
+
+class __WFCanceledTimerTask : public __WFTimerTask
+{
+protected:
+	virtual void dispatch()
+	{
+		/* A cancel-only timer: sleep() arms a negative duration (19.5),
+		 * and the immediate cancel (or deinit) delivers the unique
+		 * result through the existing handler domain. */
+		if (this->scheduler->sleep(this) >= 0)
+			this->cancel();
+		else
+			this->handle(WFT_STATE_SYS_ERROR, errno);
+	}
+
+public:
+	__WFCanceledTimerTask(CommScheduler *scheduler, timer_callback_t&& cb) :
+		__WFTimerTask(-1, 0, scheduler, std::move(cb))
+	{
+	}
+};
+
+WFTimerTask *WFTaskFactory::create_timer_task(timer_callback_t callback)
+{
+	return new __WFCanceledTimerTask(WFGlobal::get_scheduler(),
+									 std::move(callback));
 }
 
 /****************** Named Tasks ******************/
@@ -136,6 +164,201 @@ static T *__get_object_list(const std::string& name, struct rb_root *root,
 	}
 
 	return NULL;
+}
+
+/****************** Named Timer ******************/
+
+class __WFNamedTimerTask;
+
+struct __timer_node
+{
+	struct list_head list;
+	__WFNamedTimerTask *task;
+};
+
+static class __NamedTimerMap
+{
+public:
+	using TimerList = __NamedObjectList<struct __timer_node>;
+
+public:
+	WFTimerTask *create(const std::string& name,
+						time_t seconds, long nanoseconds,
+						CommScheduler *scheduler,
+						timer_callback_t&& cb);
+
+public:
+	int cancel(const std::string& name, size_t max);
+
+private:
+	struct rb_root root_;
+	std::mutex mutex_;
+
+public:
+	__NamedTimerMap()
+	{
+		root_.rb_node = NULL;
+	}
+
+	friend class __WFNamedTimerTask;
+} __timer_map;
+
+class __WFNamedTimerTask : public __WFTimerTask
+{
+public:
+	__WFNamedTimerTask(time_t seconds, long nanoseconds,
+					   CommScheduler *scheduler,
+					   timer_callback_t&& cb) :
+		__WFTimerTask(seconds, nanoseconds, scheduler, std::move(cb)),
+		flag_(false)
+	{
+		node_.task = this;
+	}
+
+	void push_to(__NamedTimerMap::TimerList *timers)
+	{
+		timers->push_back(&node_);
+		timers_ = timers;
+	}
+
+	virtual ~__WFNamedTimerTask()
+	{
+		if (node_.task)
+		{
+			bool erased = false;
+
+			__timer_map.mutex_.lock();
+			if (node_.task)
+				erased = timers_->del(&node_, &__timer_map.root_);
+
+			__timer_map.mutex_.unlock();
+			if (erased)
+				delete timers_;
+		}
+	}
+
+protected:
+	virtual void dispatch();
+	virtual void handle(int state, int error);
+
+private:
+	struct __timer_node node_;
+	__NamedTimerMap::TimerList *timers_;
+	std::atomic<bool> flag_;
+	std::mutex mutex_;
+	friend class __NamedTimerMap;
+};
+
+void __WFNamedTimerTask::dispatch()
+{
+	int ret;
+
+	mutex_.lock();
+	ret = this->scheduler->sleep(this);
+	if (ret >= 0 && flag_.exchange(true))
+		this->cancel();
+
+	mutex_.unlock();
+	if (ret < 0)
+		this->handle(WFT_STATE_SYS_ERROR, errno);
+}
+
+void __WFNamedTimerTask::handle(int state, int error)
+{
+	bool canceled = true;
+
+	if (node_.task)
+	{
+		bool erased = false;
+
+		__timer_map.mutex_.lock();
+		if (node_.task)
+		{
+			canceled = false;
+			erased = timers_->del(&node_, &__timer_map.root_);
+			node_.task = NULL;
+		}
+
+		__timer_map.mutex_.unlock();
+		if (erased)
+			delete timers_;
+	}
+
+	if (canceled)
+	{
+		state = WFT_STATE_SYS_ERROR;
+		error = ECANCELED;
+	}
+
+	mutex_.lock();
+	mutex_.unlock();
+	this->__WFTimerTask::handle(state, error);
+}
+
+WFTimerTask *__NamedTimerMap::create(const std::string& name,
+									 time_t seconds, long nanoseconds,
+									 CommScheduler *scheduler,
+									 timer_callback_t&& cb)
+{
+	auto *task = new __WFNamedTimerTask(seconds, nanoseconds, scheduler,
+										std::move(cb));
+	mutex_.lock();
+	task->push_to(__get_object_list<TimerList>(name, &root_, true));
+	mutex_.unlock();
+	return task;
+}
+
+int __NamedTimerMap::cancel(const std::string& name, size_t max)
+{
+	struct __timer_node *node;
+	TimerList *timers;
+	int ret = 0;
+
+	mutex_.lock();
+	timers = __get_object_list<TimerList>(name, &root_, false);
+	if (timers)
+	{
+		while (1)
+		{
+			if (max == 0)
+			{
+				timers = NULL;
+				break;
+			}
+
+			node = list_entry(timers->head.next, struct __timer_node, list);
+			list_del(&node->list);
+			if (node->task->flag_.exchange(true))
+				node->task->cancel();
+
+			node->task = NULL;
+			max--;
+			ret++;
+			if (timers->empty())
+			{
+				rb_erase(&timers->rb, &root_);
+				break;
+			}
+		}
+	}
+
+	mutex_.unlock();
+	delete timers;
+	return ret;
+}
+
+WFTimerTask *WFTaskFactory::create_timer_task(const std::string& name,
+											  time_t seconds, long nanoseconds,
+											  timer_callback_t callback)
+{
+	return __timer_map.create(name, seconds, nanoseconds,
+							  WFGlobal::get_scheduler(),
+							  std::move(callback));
+}
+
+int WFTaskFactory::cancel_by_name(const std::string& name, size_t max)
+{
+	return __timer_map.cancel(name, max);
 }
 
 /****************** Named Counter ******************/
@@ -900,7 +1123,9 @@ int WFTaskFactory::release_guard_safe(const std::string& name, void *msg)
 	if (!node)
 		return 0;
 
-	timer = WFTaskFactory::create_timer_task(0, 0, [node](WFTimerTask *timer) {
+	/* Cancel-only timer, as on Linux: the guard signal runs on the next
+	 * unsleep, not on a natural expiry. */
+	timer = WFTaskFactory::create_timer_task([node](WFTimerTask *timer) {
 		node->guard->WFConditional::signal(timer->user_data);
 	});
 	timer->user_data = msg;

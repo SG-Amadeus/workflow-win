@@ -1,4 +1,4 @@
-/*
+﻿/*
   Copyright (c) 2019 Sogou, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
@@ -40,6 +40,12 @@ public:
 	}
 
 protected:
+	int cancel()
+	{
+		return this->scheduler->unsleep(this);
+	}
+
+protected:
 	int state;
 	int error;
 
@@ -56,4 +62,5 @@ protected:
 };
 
 #endif
+
 

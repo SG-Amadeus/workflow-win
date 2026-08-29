@@ -333,7 +333,11 @@ public:
 
 	const ARGS *get_args() const { return &this->args; }
 
+#ifdef _WIN32
+	long long get_retval() const
+#else
 	long get_retval() const
+#endif
 	{
 		if (this->state == WFT_STATE_SUCCESS)
 			return this->get_res();

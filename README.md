@@ -58,61 +58,50 @@ vcpkg install openssl
 ```
 
 ## Compile Workflow
-### Compile OpenSSL by source code
 
-Specify the **OPENSSL_ROOT_DIR** to generate Visual Studio Project, Such as
+CMake is the repository build entry point. The official Windows layout uses
+these build trees:
 
-```powershell
-cmake -B [build directory] -S . -DOPENSSL_ROOT_DIR=[openssl directory]
+```text
+build.cmake             # workflow library
+test\build.cmake
+tutorial\build.cmake
 ```
 
-### Install OpenSSL by Installer or Chocolatey
-
-Use Command to generate Visual Studio Project
-
-```powershell
-cmake -B [build directory] -S .
-```
-
-### Install OpenSSL by vcpkg
-Specify **CMAKE_TOOLCHAIN_FILE** is essential to generate Visual Studio Project, Suche as
+For MSVC, run CMake from a shell where `cl.exe` is available. The default
+Visual Studio generator is supported:
 
 ```powershell
- cmake -B [build directory] -S . -DCMAKE_TOOLCHAIN_FILE=[vcpkg.cmake directory]
-# If the above command fails, try to specify VCPKG_TARGET_TRIPLET, use x86-windows or x64-windows
-cmake -B [build directory] -S . -DVCPKG_TARGET_TRIPLET=x86-windows -DCMAKE_TOOLCHAIN_FILE=[vcpkg.cmake directory]
+cmake -S . -B build.cmake -DOPENSSL_ROOT_DIR=[openssl directory]
+cmake --build build.cmake --config Debug
 ```
 
-### Others
-**[openssl directory]**: openssl directory of source code
-
-**[vcpkg.cmake directory]** : [vcpkg-root]\scripts\buildsystems\vcpkg.cmake
-
-
-The VS Project(workflo.sln) will be generated now. 
-
-Use VS to open workflow.sln or use cmake command to compile workflow, Such as
+For the command-line MSVC toolchain with Ninja, use the same official path:
 
 ```powershell
-# Compile Debug Config
-cmake --build [build directory] --config Debug
-# Compile Release Config
-cmake --build [build directory] --config Release
+cmake -S . -B build.cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DOPENSSL_ROOT_DIR=[openssl directory]
+cmake --build build.cmake --target workflow --parallel
 ```
 
-### Compile Tutorial of Workflow
+Build tests after installing GTest and set `GTest_DIR` to its CMake package:
+
 ```powershell
-
-# Generate VS Project of tutorial
-cmake -B build_tutorial tutorial
-
-# Compile Debug Config
-cmake --build build_tutorial --config Debug
-# Compile Release Config
-cmake --build build_tutorial --config Release
-
-# compile result will be generated in tutorial\Debug or tutorial\Release directory
+cmake -S test -B test\build.cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DGTest_DIR=[gtest install]\lib\cmake\GTest -DOPENSSL_ROOT_DIR=[openssl directory]
+cmake --build test\build.cmake --parallel
+ctest --test-dir test\build.cmake --output-on-failure
 ```
+
+Build tutorials directly with the same generator and path:
+
+```powershell
+cmake -S tutorial -B tutorial\build.cmake -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_PREFIX_PATH=.;[openssl directory] -DOPENSSL_ROOT_DIR=[openssl directory]
+cmake --build tutorial\build.cmake --parallel
+```
+
+The Ninja cache is single-configuration. Remove the corresponding
+`build.cmake` directory before switching Debug/Release or switching between
+MSVC and MinGW. No repository script depends on a local Visual Studio,
+vcpkg, or MSYS2 installation path.
 
 # Install Workflow by VCPKG
 

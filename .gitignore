@@ -6,6 +6,7 @@
 *.lo
 *.o
 *.obj
+*.test
 
 # Precompiled Headers
 *.gch
@@ -35,5 +36,24 @@
 _include
 _lib
 .vscode
-build.cmake
-build
+.claude/
+.tools/
+build.cmake/
+build/
+out/
+test/results/
+.temp/
+temp/
+vcpkg_installed/
+workflow-config.cmake
+
+# Local dependency configuration and TLS test fixtures
+vcpkg.json
+vcpkg-configuration.json
+server.key
+server.crt
+TODO.md
+
+# Debug files
+*.ilk
+*.pdb

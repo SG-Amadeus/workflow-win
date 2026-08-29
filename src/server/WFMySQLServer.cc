@@ -17,11 +17,34 @@
 */
 
 #include "WFMySQLServer.h"
+#include <new>
 
 #ifdef _WIN32
 #include <io.h>
 #endif
 
+#ifdef _WIN32
+WFConnection *WFMySQLServer::new_connection(SOCKET accept_socket)
+{
+	return this->WFServer::new_connection(accept_socket);
+}
+
+CommMessageOut *WFMySQLServer::new_connection_bootstrap(CommConnection *)
+{
+	protocol::MySQLHandshakeResponse *response =
+		new (std::nothrow) protocol::MySQLHandshakeResponse;
+	if (response)
+		response->server_set(0x0a, "5.5", 1,
+						 (const uint8_t *)"12345678901234567890",
+						 0, 33, 0);
+	return response;
+}
+
+void WFMySQLServer::delete_connection_bootstrap(CommMessageOut *message)
+{
+	delete static_cast<protocol::MySQLHandshakeResponse *>(message);
+}
+#else
 WFConnection *WFMySQLServer::new_connection(int accept_fd)
 {
 	WFConnection *conn = this->WFServer::new_connection(accept_fd);
@@ -54,6 +77,7 @@ WFConnection *WFMySQLServer::new_connection(int accept_fd)
 
 	return NULL;
 }
+#endif
 
 CommSession *WFMySQLServer::new_session(long long seq, CommConnection *conn)
 {

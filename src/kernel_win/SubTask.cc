@@ -1,4 +1,4 @@
-/*
+﻿/*
   Copyright (c) 2019 Sogou, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
@@ -63,4 +63,5 @@ void ParallelTask::dispatch()
 	else
 		this->subtask_done();
 }
+
 

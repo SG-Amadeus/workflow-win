@@ -7,16 +7,10 @@ set(SRC
 )
 
 add_library(${PROJECT_NAME} OBJECT ${SRC})
-if (WIN32)
-	if (MINGW)
-		target_compile_definitions(
-			${PROJECT_NAME} PRIVATE
-		)
-	else ()
+if (WIN32 AND NOT MINGW)
 		target_compile_definitions(
 			${PROJECT_NAME} PRIVATE
 			dup=_dup
 		)
-	endif ()
 endif ()
 

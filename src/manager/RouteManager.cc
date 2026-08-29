@@ -44,6 +44,22 @@ using RouteTargetTCP = RouteManager::RouteTarget;
 class RouteTargetUDP : public RouteManager::RouteTarget
 {
 private:
+#ifdef _WIN32
+	virtual int transport() const
+	{
+		return COMM_TRANSPORT_UDP;
+	}
+
+	virtual SOCKET create_connect_socket()
+	{
+		const struct sockaddr *addr;
+		socklen_t addrlen;
+
+		this->get_addr(&addr, &addrlen);
+		return WSASocketW(addr->sa_family, SOCK_DGRAM, IPPROTO_UDP, NULL, 0,
+						  WSA_FLAG_OVERLAPPED);
+	}
+#else
 	virtual int create_connect_fd()
 	{
 		const struct sockaddr *addr;
@@ -52,11 +68,25 @@ private:
 		this->get_addr(&addr, &addrlen);
 		return (int)socket(addr->sa_family, SOCK_DGRAM, 0);
 	}
+#endif
 };
 
 class RouteTargetSCTP : public RouteManager::RouteTarget
 {
 private:
+#ifdef _WIN32
+	virtual int transport() const
+	{
+		return COMM_TRANSPORT_SCTP;
+	}
+
+	/* No SCTP path in the Windows kernel; fail at connect time. */
+	virtual SOCKET create_connect_socket()
+	{
+		errno = EPROTONOSUPPORT;
+		return INVALID_SOCKET;
+	}
+#else
 #ifdef IPPROTO_SCTP
 	virtual int create_connect_fd()
 	{
@@ -72,6 +102,7 @@ private:
 		errno = EPROTONOSUPPORT;
 		return -1;
 	}
+#endif
 #endif
 };
 

@@ -61,7 +61,11 @@ public:
 	{
 		this->params = *params;
 		this->unbind_finish = false;
+#ifdef _WIN32
+		this->pending_listen_socket = INVALID_SOCKET;
+#else
 		this->listen_fd = -1;
+#endif
 	}
 
 public:
@@ -123,13 +127,23 @@ public:
 	int start(const struct sockaddr *bind_addr, socklen_t addrlen,
 			  const char *cert_file, const char *key_file);
 
-	/* To start with a specified fd. For graceful restart or SCTP server. */
+	/* To start with a specified native listener. */
+#ifdef _WIN32
+	int serve(SOCKET listen_socket)
+	{
+		return serve(listen_socket, NULL, NULL);
+	}
+
+	int serve(SOCKET listen_socket, const char *cert_file,
+			  const char *key_file);
+#else
 	int serve(int listen_fd)
 	{
 		return serve(listen_fd, NULL, NULL);
 	}
 
 	int serve(int listen_fd, const char *cert_file, const char *key_file);
+#endif
 
 	/* stop() is a blocking operation. */
 	void stop()
@@ -150,6 +164,9 @@ public:
 
 	/* Get the listening address. This is often used after starting
 	 * server on a random port (start() with port == 0). */
+#ifdef _WIN32
+	int get_listen_addr(struct sockaddr *addr, socklen_t *addrlen) const;
+#else
 	int get_listen_addr(struct sockaddr *addr, socklen_t *addrlen) const
 	{
 		if (this->listen_fd >= 0)
@@ -158,6 +175,7 @@ public:
 		errno = ENOTCONN;
 		return -1;
 	}
+#endif
 
 protected:
 	/* Override this function to create the initial SSL CTX of the server */
@@ -178,8 +196,13 @@ protected:
 	WFServerParams params;
 
 protected:
+#ifndef _WIN32
 	virtual int create_listen_fd();
 	virtual WFConnection *new_connection(int accept_fd);
+#else
+	virtual SOCKET create_listen_socket();
+	virtual WFConnection *new_connection(SOCKET accept_socket);
+#endif
 	void delete_connection(WFConnection *conn);
 
 private:
@@ -191,7 +214,12 @@ protected:
 	std::atomic<size_t> conn_count;
 
 private:
+#ifdef _WIN32
+	/* Borrowed only while serve(SOCKET) synchronously enters bind(). */
+	SOCKET pending_listen_socket;
+#else
 	int listen_fd;
+#endif
 	bool unbind_finish;
 
 	std::mutex mutex;

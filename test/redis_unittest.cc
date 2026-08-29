@@ -136,7 +136,7 @@ static void test_client(const char *url, std::mutex& mutex, std::condition_varia
 	flow.start();
 }
 
-TEST(WFRedisTask1, redis_unittest)
+TEST(redis_unittest, WFRedisTask1)
 {
 	std::mutex mutex;
 	std::condition_variable cond;
@@ -152,18 +152,4 @@ TEST(WFRedisTask1, redis_unittest)
 	lock.unlock();
 	server.stop();
 }
-
-// TEST(WFRedisTask2, redis_unittest)
-// {
-// 	std::mutex mutex;
-// 	std::condition_variable cond;
-// 	bool done = false;
-// 	// connect other redis server
-// 	test_client("redis://:1412@10.135.35.53/6", mutex, cond, done);
-// 	std::unique_lock<std::mutex> lock(mutex);
-// 	while (!done)
-// 		cond.wait(lock);
-
-// 	lock.unlock();
-// }
 

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.6)
+﻿cmake_minimum_required(VERSION 3.6)
 
 set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "build type")
 
@@ -15,25 +15,25 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR})
 find_library(LIBRT rt)
 find_package(OpenSSL REQUIRED)
 find_package(workflow REQUIRED CONFIG HINTS ..)
-include_directories(${OPENSSL_INCLUDE_DIR} ${WORKFLOW_INCLUDE_DIR})
+include_directories(${OPENSSL_INCLUDE_DIR} ${WORKFLOW_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../_include/workflow)
 link_directories(${WORKFLOW_LIB_DIR})
 
-if (WIN32)
-	if (WORKFLOW_TUTORIAL_BUILD_STATIC_RUNTIME)
-		set(CompilerFlags
-				CMAKE_CXX_FLAGS
-				CMAKE_CXX_FLAGS_DEBUG
-				CMAKE_CXX_FLAGS_RELEASE
-				CMAKE_CXX_FLAGS_MINSIZEREL
-				CMAKE_C_FLAGS
-				CMAKE_C_FLAGS_DEBUG
-				CMAKE_C_FLAGS_RELEASE
-				CMAKE_C_FLAGS_MINSIZEREL
-				)
-		foreach(CompilerFlag ${CompilerFlags})
-			string(REPLACE "/MD" "/MT" ${CompilerFlag} "${${CompilerFlag}}")
-		endforeach ()
-	endif ()
+if (WIN32 AND WORKFLOW_TUTORIAL_BUILD_STATIC_RUNTIME)
+	set(CompilerFlags
+			CMAKE_CXX_FLAGS
+			CMAKE_CXX_FLAGS_DEBUG
+			CMAKE_CXX_FLAGS_RELEASE
+			CMAKE_CXX_FLAGS_RELWITHDEBINFO
+			CMAKE_CXX_FLAGS_MINSIZEREL
+			CMAKE_C_FLAGS
+			CMAKE_C_FLAGS_DEBUG
+			CMAKE_C_FLAGS_RELEASE
+			CMAKE_C_FLAGS_RELWITHDEBINFO
+			CMAKE_C_FLAGS_MINSIZEREL
+			)
+	foreach(CompilerFlag ${CompilerFlags})
+		string(REPLACE "/MD" "/MT" ${CompilerFlag} "${${CompilerFlag}}")
+	endforeach ()
 endif ()
 
 if (MINGW)
@@ -66,7 +66,7 @@ if (APPLE)
 elseif (MINGW)
 	set(WORKFLOW_LIB workflow ws2_32 wsock32 OpenSSL::SSL OpenSSL::Crypto iphlpapi m z)
 elseif (WIN32)
-	set(WORKFLOW_LIB workflow ws2_32 wsock32 OpenSSL::SSL OpenSSL::Crypto)
+	set(WORKFLOW_LIB workflow ws2_32 wsock32 crypt32 OpenSSL::SSL OpenSSL::Crypto)
 else ()
 	set(WORKFLOW_LIB workflow pthread OpenSSL::SSL OpenSSL::Crypto ${LIBRT})
 endif ()
@@ -76,11 +76,7 @@ foreach(src ${TUTORIAL_LIST})
 	list(GET arr -1 bin_name)
 	add_executable(${bin_name} ${src}.cc)
 	target_link_libraries(${bin_name} ${WORKFLOW_LIB})
-	if (MINGW)
-			target_compile_definitions(
-			${bin_name} PRIVATE
-		)
-	elseif (WIN32)
+	if (WIN32 AND NOT MINGW)
 		target_compile_definitions(
 			${bin_name} PRIVATE
 			strdup=_strdup
@@ -102,11 +98,7 @@ if (KAFKA STREQUAL "y")
 		find_package(zstd CONFIG REQUIRED)
 
 		target_link_libraries("kafka_cli" wfkafka ${WORKFLOW_LIB} OpenSSL::Crypto ZLIB::ZLIB Snappy::snappy lz4::lz4 zstd::libzstd_shared)
-		if (MINGW)
-			target_compile_definitions(
-				"kafka_cli" PRIVATE
-			)
-		else ()
+		if (NOT MINGW)
 			target_compile_definitions(
 				"kafka_cli" PRIVATE
 				strdup=_strdup

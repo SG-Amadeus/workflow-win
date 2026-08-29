@@ -1,4 +1,4 @@
-/*
+﻿/*
   Copyright (c) 2020 Sogou, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,13 +17,16 @@
 */
 
 #include <stdio.h>
+#include <string.h>
+#ifdef _WIN32
+#include <WinSock2.h>
+#include <Windows.h>
+#else
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#ifndef _WIN32
 #include <unistd.h>
 #endif
-#include <string.h>
 #include <string>
 #include <mutex>
 #include <condition_variable>
@@ -197,7 +200,6 @@ TEST(task_unittest, WFThreadTask)
 	lock.unlock();
 }
 
-#ifndef _WIN32
 TEST(task_unittest, WFFileIOTask)
 {
 	srand(time(NULL));
@@ -207,34 +209,47 @@ TEST(task_unittest, WFFileIOTask)
 	std::string file_path = "./" + std::to_string(time(NULL)) +
 							"__" + std::to_string(rand() % 4096);
 
+#ifdef _WIN32
+	HANDLE file = CreateFileA(file_path.c_str(), GENERIC_READ | GENERIC_WRITE,
+							  0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL,
+							  NULL);
+	EXPECT_NE(file, INVALID_HANDLE_VALUE);
+#define WFIO_FILE	file
+#define WFIO_ARGS_FIELD	file
+#else
 	int fd = open(file_path.c_str(), O_RDWR | O_CREAT, 0644);
 	EXPECT_TRUE(fd > 0);
+#define WFIO_FILE	fd
+#define WFIO_ARGS_FIELD	fd
+#endif
 
 	char writebuf[] = "testtest";
 	char readbuf[16];
 
-	auto *write = WFTaskFactory::create_pwrite_task(fd, writebuf, 8, 80, [fd](WFFileIOTask *task) {
+	auto *write = WFTaskFactory::create_pwrite_task(WFIO_FILE, writebuf, 8, 80,
+	[WFIO_FILE](WFFileIOTask *task) {
 		auto state = task->get_state();
 
 		EXPECT_EQ(state, WFT_STATE_SUCCESS);
 		if (state == WFT_STATE_SUCCESS)
 		{
 			auto *args = task->get_args();
-			EXPECT_EQ(args->fd, fd);
+			EXPECT_EQ(args->WFIO_ARGS_FIELD, WFIO_FILE);
 			EXPECT_EQ(args->count, 8);
 			EXPECT_EQ(args->offset, 80);
 			EXPECT_TRUE(strncmp("testtest", (char *)args->buf, 8) == 0);
 		}
 	});
 
-	auto *read = WFTaskFactory::create_pread_task(fd, readbuf, 8, 80, [fd](WFFileIOTask *task) {
+	auto *read = WFTaskFactory::create_pread_task(WFIO_FILE, readbuf, 8, 80,
+	[WFIO_FILE](WFFileIOTask *task) {
 		auto state = task->get_state();
 
 		EXPECT_EQ(state, WFT_STATE_SUCCESS);
 		if (state == WFT_STATE_SUCCESS)
 		{
 			auto *args = task->get_args();
-			EXPECT_EQ(args->fd, fd);
+			EXPECT_EQ(args->WFIO_ARGS_FIELD, WFIO_FILE);
 			EXPECT_EQ(args->count, 8);
 			EXPECT_EQ(args->offset, 80);
 			EXPECT_TRUE(strncmp("testtest", (char *)args->buf, 8) == 0);
@@ -256,12 +271,17 @@ TEST(task_unittest, WFFileIOTask)
 
 	lock.unlock();
 
+#ifdef _WIN32
+	CloseHandle(file);
+	DeleteFileA(file_path.c_str());
+#else
 	close(fd);
 	remove(file_path.c_str());
-}
 #endif
 
-#ifndef _WIN32
+#undef WFIO_FILE
+#undef WFIO_ARGS_FIELD
+}
 TEST(task_unittest, WFFilePathIOTask)
 {
 	srand(time(NULL));
@@ -274,7 +294,13 @@ TEST(task_unittest, WFFilePathIOTask)
 	char writebuf[] = "testtest";
 	char readbuf[16];
 
-	auto *write = WFTaskFactory::create_pwrite_task(file_path, writebuf, 8, 80, [](WFFileIOTask *task) {
+#ifdef _WIN32
+	HANDLE file = CreateFileA(file_path.c_str(), GENERIC_READ | GENERIC_WRITE,
+							  0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL,
+							  NULL);
+	EXPECT_NE(file, INVALID_HANDLE_VALUE);
+	auto *write = WFTaskFactory::create_pwrite_task(file, writebuf, 8, 80,
+	[](WFFileIOTask *task) {
 		auto state = task->get_state();
 
 		EXPECT_EQ(state, WFT_STATE_SUCCESS);
@@ -287,7 +313,8 @@ TEST(task_unittest, WFFilePathIOTask)
 		}
 	});
 
-	auto *read = WFTaskFactory::create_pread_task(file_path, readbuf, 8, 80, [](WFFileIOTask *task) {
+	auto *read = WFTaskFactory::create_pread_task(file, readbuf, 8, 80,
+	[](WFFileIOTask *task) {
 		auto state = task->get_state();
 
 		EXPECT_EQ(state, WFT_STATE_SUCCESS);
@@ -299,6 +326,35 @@ TEST(task_unittest, WFFilePathIOTask)
 			EXPECT_TRUE(strncmp("testtest", (char *)args->buf, 8) == 0);
 		}
 	});
+#else
+	auto *write = WFTaskFactory::create_pwrite_task(file_path, writebuf, 8, 80,
+	[](WFFileIOTask *task) {
+		auto state = task->get_state();
+
+		EXPECT_EQ(state, WFT_STATE_SUCCESS);
+		if (state == WFT_STATE_SUCCESS)
+		{
+			auto *args = task->get_args();
+			EXPECT_EQ(args->count, 8);
+			EXPECT_EQ(args->offset, 80);
+			EXPECT_TRUE(strncmp("testtest", (char *)args->buf, 8) == 0);
+		}
+	});
+
+	auto *read = WFTaskFactory::create_pread_task(file_path, readbuf, 8, 80,
+	[](WFFileIOTask *task) {
+		auto state = task->get_state();
+
+		EXPECT_EQ(state, WFT_STATE_SUCCESS);
+		if (state == WFT_STATE_SUCCESS)
+		{
+			auto *args = task->get_args();
+			EXPECT_EQ(args->count, 8);
+			EXPECT_EQ(args->offset, 80);
+			EXPECT_TRUE(strncmp("testtest", (char *)args->buf, 8) == 0);
+		}
+	});
+#endif
 
 	auto *series = Workflow::create_series_work(write, [&mutex, &cond, &done](const SeriesWork *series) {
 		mutex.lock();
@@ -315,6 +371,10 @@ TEST(task_unittest, WFFilePathIOTask)
 
 	lock.unlock();
 
+#ifdef _WIN32
+	CloseHandle(file);
+	DeleteFileA(file_path.c_str());
+#else
 	remove(file_path.c_str());
-}
 #endif
+}

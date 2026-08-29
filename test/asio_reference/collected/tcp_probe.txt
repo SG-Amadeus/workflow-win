@@ -1,0 +1,24 @@
+ASIO reference probe: tcp_probe
+
+Command:
+  cl /std:c++17 /D_WIN32_WINNT=0x0601 /I src/kernel_win/asio/include tcp_probe.cc
+  /link ws2_32.lib mswsock.lib
+
+Output (values; messages are localized and omitted):
+  accept_cancel: value=995
+  accept_cancel: done=1
+  accept: value=0
+  connect: value=0
+  server_read: value=0 n=5 buf="hello"
+  client_write: value=0 n=5
+  client_read: value=995 n=0
+  client_read_cancel: value=995
+  client_read_cancel: done=1
+
+Observations for AsyncCore:
+- Cancelling a pending async_accept delivers error 995 (operation_aborted).
+- Normal connect/accept deliver 0.
+- Cancelling a pending socket read delivers error 995 (operation_aborted).
+- NOTE: the normal client_read in this first probe was also reported as 995;
+  the probe needs a corrected echo sequence before treating that line as
+  reference data for successful reads.

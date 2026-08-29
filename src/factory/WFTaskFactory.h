@@ -20,6 +20,7 @@
 #ifndef _WFTASKFACTORY_H_
 #define _WFTASKFACTORY_H_
 
+#include <stdint.h>
 #include <time.h>
 #include <functional>
 #include "PlatformSocket.h"
@@ -55,23 +56,43 @@ using dns_callback_t = std::function<void (WFDnsTask *)>;
 
 struct FileIOArgs
 {
+#ifdef _WIN32
+	HANDLE file;
+#else
 	int fd;
+#endif
 	void *buf;
 	size_t count;
+#ifdef _WIN32
+	int64_t offset;
+#else
 	off_t offset;
+#endif
 };
 
 struct FileVIOArgs
 {
+#ifdef _WIN32
+	HANDLE file;
+#else
 	int fd;
+#endif
 	const struct iovec *iov;
 	int iovcnt;
+#ifdef _WIN32
+	int64_t offset;
+#else
 	off_t offset;
+#endif
 };
 
 struct FileSyncArgs
 {
+#ifdef _WIN32
+	HANDLE file;
+#else
 	int fd;
+#endif
 };
 
 using WFFileIOTask = WFFileTask<struct FileIOArgs>;
@@ -154,8 +175,37 @@ public:
 									  dns_callback_t callback);
 
 
-#ifndef _WIN32
 public:
+#ifdef _WIN32
+	static WFFileIOTask *create_pread_task(HANDLE file,
+										   void *buf,
+										   size_t count,
+										   int64_t offset,
+										   fio_callback_t callback);
+
+	static WFFileIOTask *create_pwrite_task(HANDLE file,
+											const void *buf,
+											size_t count,
+											int64_t offset,
+											fio_callback_t callback);
+
+	static WFFileVIOTask *create_preadv_task(HANDLE file,
+											 const struct iovec *iov,
+											 int iovcnt,
+											 int64_t offset,
+											 fvio_callback_t callback);
+
+	static WFFileVIOTask *create_pwritev_task(HANDLE file,
+											  const struct iovec *iov,
+											  int iovcnt,
+											  int64_t offset,
+											  fvio_callback_t callback);
+
+	static WFFileSyncTask *create_fsync_task(HANDLE file,
+											 fsync_callback_t callback);
+	static WFFileSyncTask *create_fdsync_task(HANDLE file,
+											  fsync_callback_t callback);
+#else
 	static WFFileIOTask *create_pread_task(int fd,
 										   void *buf,
 										   size_t count,
@@ -195,6 +245,24 @@ public:
 public:
 	static WFTimerTask *create_timer_task(time_t seconds, long nanoseconds,
 										  timer_callback_t callback);
+
+	/* Create a named timer that can be cancelled by cancel_by_name(). */
+	static WFTimerTask *create_timer_task(const std::string& timer_name,
+										  time_t seconds, long nanoseconds,
+										  timer_callback_t callback);
+
+	/* Cancel all timers under the name. */
+	static int cancel_by_name(const std::string& timer_name)
+	{
+		return WFTaskFactory::cancel_by_name(timer_name, (size_t)-1);
+	}
+
+	/* Cancel at most 'max' timers under the name. */
+	static int cancel_by_name(const std::string& timer_name, size_t max);
+
+	/* Timer to be canceled immediately after started (cancel-only:
+	 * a negative duration, completed by cancel or by deinit). */
+	static WFTimerTask *create_timer_task(timer_callback_t callback);
 
 	/* Deprecated. */
 	static WFTimerTask *create_timer_task(unsigned int microseconds,

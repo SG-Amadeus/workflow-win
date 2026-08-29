@@ -72,7 +72,86 @@ WFFuture<WFFacilities::WFNetworkResult<RESP>> WFFacilities::async_request(Transp
 	return fr;
 }
 
-#ifndef _WIN32
+#ifdef _WIN32
+inline WFFuture<long long> WFFacilities::async_pread(HANDLE file, void *buf,
+												 size_t count, int64_t offset)
+{
+	auto *pr = new WFPromise<long long>();
+	auto fr = pr->get_future();
+	auto *task = WFTaskFactory::create_pread_task(file, buf, count, offset,
+												__fio_future_callback);
+
+	task->user_data = pr;
+	task->start();
+	return fr;
+}
+
+inline WFFuture<long long> WFFacilities::async_pwrite(HANDLE file,
+												  const void *buf, size_t count,
+												  int64_t offset)
+{
+	auto *pr = new WFPromise<long long>();
+	auto fr = pr->get_future();
+	auto *task = WFTaskFactory::create_pwrite_task(file, buf, count, offset,
+												 __fio_future_callback);
+
+	task->user_data = pr;
+	task->start();
+	return fr;
+}
+
+inline WFFuture<long long> WFFacilities::async_preadv(HANDLE file,
+												  const struct iovec *iov,
+												  int iovcnt, int64_t offset)
+{
+	auto *pr = new WFPromise<long long>();
+	auto fr = pr->get_future();
+	auto *task = WFTaskFactory::create_preadv_task(file, iov, iovcnt, offset,
+												 __fvio_future_callback);
+
+	task->user_data = pr;
+	task->start();
+	return fr;
+}
+
+inline WFFuture<long long> WFFacilities::async_pwritev(HANDLE file,
+												   const struct iovec *iov,
+												   int iovcnt, int64_t offset)
+{
+	auto *pr = new WFPromise<long long>();
+	auto fr = pr->get_future();
+	auto *task = WFTaskFactory::create_pwritev_task(file, iov, iovcnt, offset,
+												  __fvio_future_callback);
+
+	task->user_data = pr;
+	task->start();
+	return fr;
+}
+
+inline WFFuture<int> WFFacilities::async_fsync(HANDLE file)
+{
+	auto *pr = new WFPromise<int>();
+	auto fr = pr->get_future();
+	auto *task = WFTaskFactory::create_fsync_task(file,
+											   __fsync_future_callback);
+
+	task->user_data = pr;
+	task->start();
+	return fr;
+}
+
+inline WFFuture<int> WFFacilities::async_fdatasync(HANDLE file)
+{
+	auto *pr = new WFPromise<int>();
+	auto fr = pr->get_future();
+	auto *task = WFTaskFactory::create_fdsync_task(file,
+												__fsync_future_callback);
+
+	task->user_data = pr;
+	task->start();
+	return fr;
+}
+#else
 inline WFFuture<ssize_t> WFFacilities::async_pread(int fd, void *buf, size_t count, off_t offset)
 {
 	auto *pr = new WFPromise<ssize_t>();
@@ -148,7 +227,23 @@ inline void WFFacilities::__timer_future_callback(WFTimerTask *task)
 	delete pr;
 }
 
-#ifndef _WIN32
+#ifdef _WIN32
+inline void WFFacilities::__fio_future_callback(WFFileIOTask *task)
+{
+	auto *pr = static_cast<WFPromise<long long> *>(task->user_data);
+
+	pr->set_value(task->get_retval());
+	delete pr;
+}
+
+inline void WFFacilities::__fvio_future_callback(WFFileVIOTask *task)
+{
+	auto *pr = static_cast<WFPromise<long long> *>(task->user_data);
+
+	pr->set_value(task->get_retval());
+	delete pr;
+}
+#else
 inline void WFFacilities::__fio_future_callback(WFFileIOTask *task)
 {
 	auto *pr = static_cast<WFPromise<ssize_t> *>(task->user_data);

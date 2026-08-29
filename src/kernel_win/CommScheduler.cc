@@ -1,4 +1,4 @@
-/*
+﻿/*
   Copyright (c) 2019 Sogou, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,10 +18,74 @@
 */
 
 #include <errno.h>
+#include <assert.h>
 #include <stdlib.h>
 #include <chrono>
+
+#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_ARM64))
+#include <intrin.h>
+#endif
+
 #include "PlatformSocket.h"
 #include "CommScheduler.h"
+
+namespace {
+
+template<class Predicate>
+inline bool wait_condition(std::condition_variable &cond,
+						   std::unique_lock<std::mutex> &lock,
+						   int wait_timeout,
+						   Predicate pred)
+{
+	if (wait_timeout < 0)
+	{
+		cond.wait(lock, pred);
+		return true;
+	}
+
+	return cond.wait_for(lock, std::chrono::milliseconds(wait_timeout), pred);
+}
+
+inline int compare_load_product(size_t a, size_t b,
+								size_t c, size_t d)
+{
+#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_ARM64))
+	unsigned __int64 hi1, lo1, hi2, lo2;
+
+	lo1 = _umul128((unsigned __int64)a, (unsigned __int64)b, &hi1);
+	lo2 = _umul128((unsigned __int64)c, (unsigned __int64)d, &hi2);
+	if (hi1 != hi2)
+		return hi1 < hi2 ? -1 : 1;
+	if (lo1 != lo2)
+		return lo1 < lo2 ? -1 : 1;
+	return 0;
+#elif defined(__SIZEOF_INT128__)
+	unsigned __int128 p1 = (unsigned __int128)a * b;
+	unsigned __int128 p2 = (unsigned __int128)c * d;
+
+	if (p1 < p2)
+		return -1;
+	else if (p1 > p2)
+		return 1;
+	else
+		return 0;
+#else
+	/* This fallback is for 32-bit platforms where size_t is 32-bit and the
+	 * 64-bit product is exact. On 64-bit MSVC/GCC/Clang the branches above
+	 * are used. */
+	unsigned long long p1 = (unsigned long long)a * b;
+	unsigned long long p2 = (unsigned long long)c * d;
+
+	if (p1 < p2)
+		return -1;
+	else if (p1 > p2)
+		return 1;
+	else
+		return 0;
+#endif
+}
+
+} /* anonymous namespace */
 
 int CommSchedTarget::init(const struct sockaddr *addr, socklen_t addrlen,
 						  int connect_timeout, int response_timeout,
@@ -36,8 +100,8 @@ int CommSchedTarget::init(const struct sockaddr *addr, socklen_t addrlen,
 	if (this->CommTarget::init(addr, addrlen, connect_timeout,
 							   response_timeout) >= 0)
 	{
-		this->max_load = max_connections;
-		this->cur_load = 0;
+		this->set_max_load(max_connections);
+		this->set_cur_load(0);
 		this->wait_cnt = 0;
 		this->group = NULL;
 		return 0;
@@ -48,6 +112,10 @@ int CommSchedTarget::init(const struct sockaddr *addr, socklen_t addrlen,
 
 void CommSchedTarget::deinit()
 {
+	assert(this->group == NULL);
+	assert(this->wait_cnt == 0);
+	assert(this->cur_load == 0);
+
 	this->CommTarget::deinit();
 }
 
@@ -69,7 +137,7 @@ CommTarget *CommSchedTarget::acquire(int wait_timeout)
 		if (wait_timeout != 0)
 		{
 			this->wait_cnt++;
-			if (!this->cond.wait_for(lock, wait_timeout * std::chrono::milliseconds(1), pred))
+			if (!wait_condition(this->cond, lock, wait_timeout, pred))
 				ret = ETIMEDOUT;
 
 			this->wait_cnt--;
@@ -80,10 +148,10 @@ CommTarget *CommSchedTarget::acquire(int wait_timeout)
 
 	if (this->cur_load < this->max_load)
 	{
-		this->cur_load++;
+		this->inc_cur_load();
 		if (this->group)
 		{
-			this->group->cur_load++;
+			this->group->inc_cur_load();
 			this->group->heapify(this->index);
 		}
 
@@ -111,13 +179,18 @@ void CommSchedTarget::release()
 		lock.swap(group_lock);
 	}
 
-	this->cur_load--;
+	this->dec_cur_load();
+
+	/* A release frees exactly one slot. The wake-up policy is explicit:
+	 * target waiters have strict priority over group waiters, so a slot freed
+	 * on this target is first offered to waiters on this exact target. Only
+	 * when no target waiter exists is the slot offered to a group waiter. */
 	if (this->wait_cnt > 0)
 		this->cond.notify_one();
 
 	if (this->group)
 	{
-		this->group->cur_load--;
+		this->group->dec_cur_load();
 		if (this->wait_cnt == 0 && this->group->wait_cnt > 0)
 			this->group->cond.notify_one();
 
@@ -130,15 +203,12 @@ void CommSchedTarget::release()
 int CommSchedGroup::target_cmp(CommSchedTarget *target1,
 							   CommSchedTarget *target2)
 {
-	size_t load1 = target1->cur_load * target2->max_load;
-	size_t load2 = target2->cur_load * target1->max_load;
+	size_t load1 = target1->cur_load;
+	size_t load2 = target2->cur_load;
+	size_t cap1 = target1->max_load;
+	size_t cap2 = target2->max_load;
 
-	if (load1 < load2)
-		return -1;
-	else if (load1 > load2)
-		return 1;
-	else
-		return 0;
+	return compare_load_product(load1, cap2, load2, cap1);
 }
 
 void CommSchedGroup::heap_adjust(int index, int swap_on_equal)
@@ -226,15 +296,25 @@ int CommSchedGroup::heap_insert(CommSchedTarget *target)
 	if (this->heap_size == this->heap_buf_size)
 	{
 		int new_size = 2 * this->heap_buf_size;
-		void *new_base = realloc(this->tg_heap, new_size * sizeof (void *));
 
+		if (new_size < this->heap_buf_size)
+		{
+			errno = ENOMEM;
+			return -1;
+		}
+
+		void *new_base = realloc(this->tg_heap,
+								 new_size * sizeof (void *));
 		if (new_base)
 		{
 			this->tg_heap = (CommSchedTarget **)new_base;
 			this->heap_buf_size = new_size;
 		}
 		else
+		{
+			errno = ENOMEM;
 			return -1;
+		}
 	}
 
 	this->tg_heap[this->heap_size] = target;
@@ -263,18 +343,31 @@ void CommSchedGroup::heap_remove(int index)
 
 int CommSchedGroup::init()
 {
-	this->tg_heap = new CommSchedTarget *[COMMGROUP_INIT_SIZE];
+	this->tg_heap = (CommSchedTarget **)malloc(COMMGROUP_INIT_SIZE *
+											  sizeof (void *));
+	if (!this->tg_heap)
+	{
+		errno = ENOMEM;
+		return -1;
+	}
+
 	this->heap_buf_size = COMMGROUP_INIT_SIZE;
 	this->heap_size = 0;
-	this->max_load = 0;
-	this->cur_load = 0;
+	this->set_max_load(0);
+	this->set_cur_load(0);
 	this->wait_cnt = 0;
 	return 0;
 }
 
 void CommSchedGroup::deinit()
 {
-	delete [](this->tg_heap);
+	assert(this->heap_size == 0);
+	assert(this->wait_cnt == 0);
+	assert(this->cur_load == 0);
+	assert(this->max_load == 0);
+
+	free(this->tg_heap);
+	this->tg_heap = NULL;
 }
 
 int CommSchedGroup::add(CommSchedTarget *target)
@@ -289,13 +382,15 @@ int CommSchedGroup::add(CommSchedTarget *target)
 		if (this->heap_insert(target) >= 0)
 		{
 			target->group = this;
-			this->max_load += target->max_load;
-			this->cur_load += target->cur_load;
+			this->add_max_load(target->max_load);
+			this->add_cur_load(target->cur_load);
 			if (this->wait_cnt > 0 && this->cur_load < this->max_load)
 				this->cond.notify_one();
 
 			ret = 0;
 		}
+		else
+			errno = ENOMEM;
 	}
 	else if (target->group == this)
 		errno = EEXIST;
@@ -317,8 +412,8 @@ int CommSchedGroup::remove(CommSchedTarget *target)
 	if (target->group == this && target->wait_cnt == 0)
 	{
 		this->heap_remove(target->index);
-		this->max_load -= target->max_load;
-		this->cur_load -= target->cur_load;
+		this->sub_max_load(target->max_load);
+		this->sub_cur_load(target->cur_load);
 		target->group = NULL;
 		ret = 0;
 	}
@@ -342,7 +437,7 @@ CommTarget *CommSchedGroup::acquire(int wait_timeout)
 		if (wait_timeout != 0)
 		{
 			this->wait_cnt++;
-			if (!this->cond.wait_for(lock, wait_timeout * std::chrono::milliseconds(1), pred))
+			if (!wait_condition(this->cond, lock, wait_timeout, pred))
 				ret = ETIMEDOUT;
 
 			this->wait_cnt--;
@@ -354,8 +449,8 @@ CommTarget *CommSchedGroup::acquire(int wait_timeout)
 	if (this->cur_load < this->max_load)
 	{
 		target = this->tg_heap[0];
-		target->cur_load++;
-		this->cur_load++;
+		target->inc_cur_load();
+		this->inc_cur_load();
 		this->heapify(0);
 		ret = 0;
 	}
@@ -369,4 +464,5 @@ CommTarget *CommSchedGroup::acquire(int wait_timeout)
 
 	return target;
 }
+
 

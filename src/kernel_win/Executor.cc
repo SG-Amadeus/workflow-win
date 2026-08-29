@@ -1,4 +1,4 @@
-/*
+﻿/*
   Copyright (c) 2019 Sogou, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,6 +27,7 @@ struct ExecSessionEntry
 {
 	struct list_head list;
 	ExecSession *session;
+	int allocated;
 	thrdpool_t *thrdpool;
 };
 
@@ -81,10 +82,11 @@ void Executor::executor_thread_routine(void *context)
 			.context	=	queue
 		};
 		*/
+		entry->allocated = 1;
 		__thrdpool_schedule(&task, entry, entry->thrdpool);
 	}
 	else
-		delete entry;
+		free(entry);
 
 	session->execute();
 	session->handle(ES_STATE_FINISHED, 0);
@@ -110,7 +112,10 @@ void Executor::executor_cancel(const struct thrdpool_task *task)
 
 int Executor::request(ExecSession *session, ExecQueue *queue)
 {
-	ExecSessionEntry *entry = new ExecSessionEntry;
+	ExecSessionEntry *entry = (ExecSessionEntry *)malloc(sizeof (*entry));
+
+	if (!entry)
+		return -1;
 
 	session->queue = queue;
 	entry->session = session;
@@ -129,7 +134,7 @@ int Executor::request(ExecSession *session, ExecQueue *queue)
 		if (thrdpool_schedule(&task, this->thrdpool) < 0)
 		{
 			list_del(&entry->list);
-			delete entry;
+			free(entry);
 			entry = NULL;
 		}
 	}
@@ -137,4 +142,5 @@ int Executor::request(ExecSession *session, ExecQueue *queue)
 	queue->mutex.unlock();
 	return -!entry;
 }
+
 

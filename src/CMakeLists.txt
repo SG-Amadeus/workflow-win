@@ -38,9 +38,6 @@ add_library(
 	$<TARGET_OBJECTS:client>
 )
 
-#target_link_libraries(${LIB_SHARED} ws2_32 wsock32 OpenSSL::SSL OpenSSL::Crypto)
-#if (NOT WIN32)
-
 if (KAFKA STREQUAL "y")
 	add_dependencies(client_kafka LINK_HEADERS)
 	add_dependencies(util_kafka LINK_HEADERS)

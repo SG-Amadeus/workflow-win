@@ -1,4 +1,4 @@
-/*
+﻿/*
   Copyright (c) 2019 Sogou, Inc.
 
   Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +21,7 @@
 #define _COMMSCHEDULER_H_
 
 #include <openssl/ssl.h>
+#include <atomic>
 #include <mutex>
 #include <condition_variable>
 #include "PlatformSocket.h"
@@ -29,15 +30,77 @@
 class CommSchedObject
 {
 public:
-	size_t get_max_load() const { return this->max_load; }
-	size_t get_cur_load() const { return this->cur_load; }
+	size_t get_max_load() const
+	{
+		return this->max_load_pub.load(std::memory_order_relaxed);
+	}
+
+	size_t get_cur_load() const
+	{
+		return this->cur_load_pub.load(std::memory_order_relaxed);
+	}
 
 private:
 	virtual CommTarget *acquire(int wait_timeout) = 0;
+	friend class SchedulerTestAccess;
 
 protected:
-	size_t max_load;
-	size_t cur_load;
+	/* Lock-internal counters. All scheduler mutations happen under the
+	 * appropriate target/group mutex, so these remain plain fields. */
+	size_t max_load = 0;
+	size_t cur_load = 0;
+
+	/* Published atomic snapshots for lock-free get_*_load() calls. */
+	std::atomic<size_t> max_load_pub{0};
+	std::atomic<size_t> cur_load_pub{0};
+
+	void set_max_load(size_t load)
+	{
+		this->max_load = load;
+		this->max_load_pub.store(load, std::memory_order_relaxed);
+	}
+
+	void set_cur_load(size_t load)
+	{
+		this->cur_load = load;
+		this->cur_load_pub.store(load, std::memory_order_relaxed);
+	}
+
+	void add_max_load(size_t load)
+	{
+		this->max_load += load;
+		this->max_load_pub.store(this->max_load, std::memory_order_relaxed);
+	}
+
+	void sub_max_load(size_t load)
+	{
+		this->max_load -= load;
+		this->max_load_pub.store(this->max_load, std::memory_order_relaxed);
+	}
+
+	void inc_cur_load()
+	{
+		++this->cur_load;
+		this->cur_load_pub.store(this->cur_load, std::memory_order_relaxed);
+	}
+
+	void dec_cur_load()
+	{
+		--this->cur_load;
+		this->cur_load_pub.store(this->cur_load, std::memory_order_relaxed);
+	}
+
+	void add_cur_load(size_t load)
+	{
+		this->cur_load += load;
+		this->cur_load_pub.store(this->cur_load, std::memory_order_relaxed);
+	}
+
+	void sub_cur_load(size_t load)
+	{
+		this->cur_load -= load;
+		this->cur_load_pub.store(this->cur_load, std::memory_order_relaxed);
+	}
 
 public:
 	virtual ~CommSchedObject() { }
@@ -79,6 +142,7 @@ private:
 	std::mutex mutex;
 	std::condition_variable cond;
 	friend class CommSchedGroup;
+	friend class SchedulerTestAccess;
 };
 
 class CommSchedGroup : public CommSchedObject
@@ -107,6 +171,7 @@ private:
 	int heap_insert(CommSchedTarget *target);
 	void heap_remove(int index);
 	friend class CommSchedTarget;
+	friend class SchedulerTestAccess;
 };
 
 class CommScheduler
@@ -122,7 +187,7 @@ public:
 		this->comm.deinit();
 	}
 
-	/* wait_timeout in microseconds, -1 for no timeout. */
+	/* wait_timeout in milliseconds, -1 for no timeout. */
 	int request(CommSession *session, CommSchedObject *object,
 				int wait_timeout, CommTarget **target)
 	{
@@ -143,6 +208,11 @@ public:
 	int reply(CommSession *session)
 	{
 		return this->comm.reply(session);
+	}
+
+	int shutdown(CommSession *session)
+	{
+		return this->comm.shutdown(session);
 	}
 
 	int push(const void *buf, size_t size, CommSession *session)
@@ -166,7 +236,13 @@ public:
 		return this->comm.sleep(session);
 	}
 
-//#ifdef __linux__
+	/* Call 'unsleep' only before 'handle()' returns. */
+	int unsleep(SleepSession *session)
+	{
+		return this->comm.unsleep(session);
+	}
+
+	/* for file I/O services. */
 	int io_bind(IOService *service)
 	{
 		return this->comm.io_bind(service);
@@ -188,6 +264,16 @@ public:
 		return this->comm.increase_handler_thread();
 	}
 
+	int decrease_handler_thread()
+	{
+		return this->comm.decrease_handler_thread();
+	}
+
+	void customize_event_handler(CommEventHandler *handler)
+	{
+		this->comm.customize_event_handler(handler);
+	}
+
 private:
 	Communicator comm;
 
@@ -196,4 +282,5 @@ public:
 };
 
 #endif
+
 

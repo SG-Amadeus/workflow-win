@@ -1,0 +1,23 @@
+ASIO reference probe: io_context_timer_strand_probe
+
+Command:
+  cl /std:c++17 /I src/kernel_win/asio/include io_context_timer_strand_probe.cc
+  /link ws2_32.lib mswsock.lib
+
+Output:
+  timer_expire: ec=0
+  timer_expire: ok=1
+  timer_cancel: ec=995
+  timer_cancel: cancelled_count=1 total=1
+  timer_reuse_first: ec=0
+  timer_reuse_second: ec=0
+  timer_reuse: ok=2
+  strand_order: 0 1 2 3 4 5 6 7 8 9
+
+Observations for AsyncCore:
+- A normal timer expiry handler receives error 0.
+- cancel() returns the number of cancelled handlers (1).
+- A cancelled handler receives Windows error 995 (operation_aborted).
+- A timer object can be re-armed after expiry and after cancel.
+- Handlers posted to the same strand run serially in FIFO order even with
+  multiple io_context worker threads.

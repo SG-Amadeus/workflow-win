@@ -545,7 +545,6 @@ SubTask *WFResolverTask::done()
 		task_callback();
 	else
 		has_next_ = false;
-
 	return series->pop();
 }
 

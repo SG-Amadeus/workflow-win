@@ -48,7 +48,7 @@ static void test_client(const char *url, const char *sql, std::mutex& mutex, std
 	task->start();
 }
 
-TEST(WFMySQLTask1, mysql_unittest)
+TEST(mysql_unittest, WFMySQLTask1)
 {
 	std::mutex mutex;
 	std::condition_variable cond;
@@ -65,4 +65,16 @@ TEST(WFMySQLTask1, mysql_unittest)
 	lock.unlock();
 	server.stop();
 }
+
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+
+#include <openssl/ssl.h>
+int main(int argc, char* argv[])
+{
+	OPENSSL_init_ssl(0, 0);
+	::testing::InitGoogleTest(&argc, argv);
+	return RUN_ALL_TESTS();
+}
+
+#endif
 

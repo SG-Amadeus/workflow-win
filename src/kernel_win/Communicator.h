@@ -1,85 +1,85 @@
-/*
-  Copyright (c) 2019 Sogou, Inc.
+﻿/*
+ * V6 Communicator upper-business contract.
+ *
+ * This header follows the Linux Workflow upper business shape, adapted only
+ * where Windows requires SOCKET/HANDLE types. It intentionally exposes no
+ * ASIO/IOCP/backend type. All lower execution is delegated to the V6 async kernel
+ * (see async/).
+ */
 
-  Licensed under the Apache License, Version 2.0 (the "License");
-  you may not use this file except in compliance with the License.
-  You may obtain a copy of the License at
+#ifndef _V6_COMMUNICATOR_H_
+#define _V6_COMMUNICATOR_H_
 
-      http://www.apache.org/licenses/LICENSE-2.0
-
-  Unless required by applicable law or agreed to in writing, software
-  distributed under the License is distributed on an "AS IS" BASIS,
-  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  See the License for the specific language governing permissions and
-  limitations under the License.
-
-  Authors: Xie Han (xiehan@sogou-inc.com)
-           Wu Jiaxu (wujiaxu@sogou-inc.com)
-*/
-
-#ifndef _COMMUNICATOR_H_
-#define _COMMUNICATOR_H_
-
-#include <openssl/ssl.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <mutex>
-#include <atomic>
+#include <time.h>
+#include <WinSock2.h>
+#include <Windows.h>
+#include <openssl/ssl.h>
 #include "PlatformSocket.h"
 #include "list.h"
-#include "thrdpool.h"
-#include "WinPoller.h"
+#include "IOService.h"
 
-struct CommConnEntry;
+
+
+
+
+class CommunicatorImpl;
+class comm_request_op;
+class comm_sleep_op;
+class comm_service_op;
+
+enum
+{
+	COMM_TRANSPORT_TCP = 1,
+	COMM_TRANSPORT_UDP,
+	COMM_TRANSPORT_SCTP
+};
+
+class Communicator;
+class CommTarget;
+class CommConnection;
+class CommMessageOut;
+class CommMessageIn;
+class CommSession;
+class CommService;
 class CommServiceTarget;
+class SleepSession;
+class CommConnEntry;
 
 class CommConnection
 {
-protected:
+public:
 	virtual ~CommConnection() { }
-	friend class Communicator;
 };
 
 class CommTarget
 {
 public:
+	CommTarget();
 	int init(const struct sockaddr *addr, socklen_t addrlen,
 			 int connect_timeout, int response_timeout);
 	void deinit();
 
 public:
-	void get_addr(const struct sockaddr **addr, socklen_t *addrlen) const
-	{
-		*addr = this->addr;
-		*addrlen = this->addrlen;
-	}
-
-	int has_idle_conn() const { return !list_empty(&this->idle_list); }
+	void get_addr(const struct sockaddr **addr, socklen_t *addrlen) const;
+	int has_idle_conn() const;
 
 protected:
-	void set_ssl(SSL_CTX *ssl_ctx, int ssl_connect_timeout)
-	{
-		this->ssl_ctx = ssl_ctx;
-		this->ssl_connect_timeout = ssl_connect_timeout;
-	}
-
-	SSL_CTX *get_ssl_ctx() const { return this->ssl_ctx; }
+	void set_ssl(SSL_CTX *ssl_ctx, int ssl_connect_timeout);
+	SSL_CTX *get_ssl_ctx() const;
+	virtual int transport() const;
+	/* Kept for custom targets that configure their identity before request(). */
+	void set_transport(int transport);
 
 private:
-	virtual int create_connect_fd()
-	{
-		return (int)socket(this->addr->sa_family, SOCK_STREAM, 0);
-	}
-
-	virtual CommConnection *new_connection(int connect_fd)
-	{
-		return new CommConnection;
-	}
-
-	virtual int init_ssl(SSL *ssl) { return 0; }
+	virtual SOCKET create_connect_socket();
+	virtual CommConnection *new_connection(SOCKET socket);
+	virtual int init_ssl(SSL *ssl);
 
 public:
-	virtual void release() { }
+	virtual void release();
+	virtual ~CommTarget();
 
 private:
 	struct sockaddr *addr;
@@ -88,15 +88,19 @@ private:
 	int response_timeout;
 	int ssl_connect_timeout;
 	SSL_CTX *ssl_ctx;
+	/* Configuration for the default target implementation. */
+	int transport_kind;
 
 private:
 	struct list_head idle_list;
-	std::mutex mutex;
+	SRWLOCK lock;
 
-public:
-	virtual ~CommTarget() { }
-	friend class CommSession;
 	friend class Communicator;
+	friend class CommunicatorImpl;
+	friend class comm_request_op;
+	friend class comm_sleep_op;
+	friend class comm_service_op;
+	friend class CommServiceTarget;
 };
 
 class CommMessageOut
@@ -106,7 +110,12 @@ private:
 
 public:
 	virtual ~CommMessageOut() { }
+
 	friend class Communicator;
+	friend class CommunicatorImpl;
+	friend class comm_request_op;
+	friend class comm_sleep_op;
+	friend class comm_service_op;
 };
 
 class CommMessageIn
@@ -115,24 +124,28 @@ private:
 	virtual int append(const void *buf, size_t *size) = 0;
 
 protected:
-	/* Send small packet while receiving. Call only in append(). */
 	virtual int feedback(const void *buf, size_t size);
-
-	/* In append(), reset the begin time of receiving to current time. */
 	virtual void renew();
+	virtual CommMessageIn *inner();
 
 private:
-	struct CommConnEntry *entry;
+	CommConnEntry *entry;
 
 public:
+	CommMessageIn() : entry(NULL) { }
 	virtual ~CommMessageIn() { }
+
 	friend class Communicator;
+	friend class CommunicatorImpl;
+	friend class comm_request_op;
+	friend class comm_sleep_op;
+	friend class comm_service_op;
 };
 
 #define CS_STATE_SUCCESS	0
 #define CS_STATE_ERROR		1
 #define CS_STATE_STOPPED	2
-#define CS_STATE_TOREPLY	3	/* for service session only. */
+#define CS_STATE_TOREPLY	3
 
 class CommSession
 {
@@ -142,7 +155,7 @@ private:
 	virtual int send_timeout() { return -1; }
 	virtual int receive_timeout() { return -1; }
 	virtual int keep_alive_timeout() { return 0; }
-	virtual int first_timeout() { return 0; }	/* for client session only. */
+	virtual int first_timeout() { return 0; }
 	virtual void handle(int state, int error) = 0;
 
 protected:
@@ -160,15 +173,18 @@ private:
 	long long seq;
 
 private:
-	int64_t begin_time;
-	int timeout;
 	int passive;
 
 public:
-	CommSession() { this->passive = 0; }
+	CommSession();
 	virtual ~CommSession();
+
 	friend class CommMessageIn;
 	friend class Communicator;
+	friend class CommunicatorImpl;
+	friend class comm_request_op;
+	friend class comm_sleep_op;
+	friend class comm_service_op;
 };
 
 class CommService
@@ -181,43 +197,23 @@ public:
 	int drain(int max);
 
 public:
-	void get_addr(const struct sockaddr **addr, socklen_t *addrlen) const
-	{
-		*addr = this->bind_addr;
-		*addrlen = this->addrlen;
-	}
+	void get_addr(const struct sockaddr **addr, socklen_t *addrlen) const;
+	void set_reliable(int reliable);
 
 protected:
-	void set_ssl(SSL_CTX *ssl_ctx, int ssl_accept_timeout)
-	{
-		this->ssl_ctx = ssl_ctx;
-		this->ssl_accept_timeout = ssl_accept_timeout;
-	}
-
-	SSL_CTX *get_ssl_ctx() const { return this->ssl_ctx; }
+	void set_ssl(SSL_CTX *ssl_ctx, int ssl_accept_timeout);
+	SSL_CTX *get_ssl_ctx() const;
 
 private:
 	virtual CommSession *new_session(long long seq, CommConnection *conn) = 0;
-	virtual void handle_stop(int error) { }
+	virtual void handle_stop(int error);
 	virtual void handle_unbound() = 0;
 
 private:
-	virtual int create_listen_fd()
-	{
-		return (int)socket(this->bind_addr->sa_family, SOCK_STREAM, 0);
-	}
-
-	virtual CommConnection *new_connection(int accept_fd)
-	{
-		return new CommConnection;
-	}
-
-	virtual int create_accept_fd()
-	{
-		return (int)socket(this->bind_addr->sa_family, SOCK_STREAM, 0);
-	}
-
-	virtual int init_ssl(SSL *ssl) { return 0; }
+	virtual SOCKET create_listen_socket();
+	virtual SOCKET create_datagram_socket();
+	virtual CommConnection *new_connection(SOCKET socket);
+	virtual int init_ssl(SSL *ssl);
 
 private:
 	struct sockaddr *bind_addr;
@@ -232,17 +228,29 @@ private:
 	void decref();
 
 private:
-	SOCKET listen_sockfd;
-	std::atomic<int> ref;
+	int reliable;
+	volatile LONG ref;
+	CommunicatorImpl *impl;
+	void *listener_handle;
+	void *recv_handle;
+	long long seq;
+	volatile LONG closing;
+	volatile LONG listener_released;
+	struct list_head live_list;
 
 private:
-	struct list_head alive_list;
-	std::mutex mutex;
+	struct list_head keep_alive_list;
+	SRWLOCK lock;
 
 public:
-	virtual ~CommService() { }
-	friend class CommServiceTarget;
+	virtual ~CommService();
+
 	friend class Communicator;
+	friend class CommServiceTarget;
+	friend class CommunicatorImpl;
+	friend class comm_request_op;
+	friend class comm_sleep_op;
+	friend class comm_service_op;
 };
 
 #define SS_STATE_COMPLETE	0
@@ -255,162 +263,88 @@ private:
 	virtual int duration(struct timespec *value) = 0;
 	virtual void handle(int state, int error) = 0;
 
+private:
+	volatile LONG state;
+	void *timer_handle;
+
 public:
-	virtual ~SleepSession() { }
+	SleepSession() : state(0), timer_handle(nullptr) { }
+	virtual ~SleepSession();
+
 	friend class Communicator;
+	friend class CommunicatorImpl;
+	friend class comm_request_op;
+	friend class comm_sleep_op;
+	friend class comm_service_op;
 };
 
-#define IOS_STATE_SUCCESS	0
-#define IOS_STATE_ERROR		1
+class CommunicatorImpl;
+class comm_request_op;
+class comm_sleep_op;
+class comm_service_op;
 
-class IOSession
+class CommEventHandler
 {
-public:
-	void prep_pread(int fd, void *buf, size_t count, long long offset);
-	void prep_pwrite(int fd, void *buf, size_t count, long long offset);
-	void prep_preadv(int fd, const struct iovec *iov, int iovcnt,
-					 long long offset);
-	void prep_pwritev(int fd, const struct iovec *iov, int iovcnt,
-					  long long offset);
-	void prep_fsync(int fd);
-	void prep_fdsync(int fd);
-
 private:
-	virtual void handle(int state, int error) = 0;
-
-protected:
-	long get_res() const { return this->res; }
-
-private:
-	char iocb_buf[64];
-	long res;
-
-private:
-	struct list_head list;
+	virtual void schedule(void (*routine)(void *), void *context) = 0;
+	virtual void wait() = 0;
 
 public:
-	IOSession();
-	virtual ~IOSession() { }
-	friend class IOService;
+	virtual ~CommEventHandler() { }
+
 	friend class Communicator;
+	friend class CommunicatorImpl;
 };
-
-class IOService
-{
-public:
-	int init(unsigned int maxevents);
-	void deinit();
-
-	int request(IOSession *session);
-
-private:
-	virtual void handle_stop(int error) { }
-	virtual void handle_unbound() = 0;
-
-private:
-	struct io_context *io_ctx;
-
-private:
-	void incref();
-	void decref();
-
-private:
-	int event_fd;
-	int ref;
-
-private:
-	struct list_head session_list;
-	std::mutex mutex;
-
-public:
-	virtual ~IOService() { }
-	friend class Communicator;
-};
-
-//#endif
 
 class Communicator
 {
 public:
-	int init(size_t poller_threads, size_t handler_threads);
+	Communicator();
+	virtual ~Communicator();
+
+	int init(size_t io_threads);
+	int init(size_t io_threads, size_t handler_threads);
 	void deinit();
 
 	int request(CommSession *session, CommTarget *target);
 	int reply(CommSession *session);
-
 	int push(const void *buf, size_t size, CommSession *session);
+	int shutdown(CommSession *session);
 
 	int bind(CommService *service);
 	void unbind(CommService *service);
 
 	int sleep(SleepSession *session);
+	int unsleep(SleepSession *session);
 
 	int io_bind(IOService *service);
 	void io_unbind(IOService *service);
 
-public:
-	int is_handler_thread() const { return thrdpool_in_pool(this->thrdpool); }
+	/* Keep the Linux Workflow scheduler surface.  IO workers run the ASIO
+	 * transport; handler workers run the final Workflow callbacks. */
+	int is_handler_thread() const;
 	int increase_handler_thread();
+	int decrease_handler_thread();
+
+	/* The handler is used only for final Workflow-visible completions.  It
+	 * must remain alive until deinit() has returned. */
+	void customize_event_handler(CommEventHandler *handler);
 
 private:
-	WinPoller *poller;
-	thrdpool_t *thrdpool;
-	std::atomic<size_t> total_fd_cnt;
-	volatile bool stop_flag;
-	size_t handler_threads;
+	Communicator(const Communicator&);
+	Communicator& operator=(const Communicator&);
 
-private:
-	static void handler_thread_routine(void *context);
+	CommunicatorImpl *impl_;
 
-	int create_handler_threads(size_t handler_threads);
-
-	SOCKET nonblock_connect(CommTarget *target);
-	SOCKET nonblock_accept(CommService *service);
-	SOCKET nonblock_listen(CommService *service);
-
-	CommConnEntry *accept_conn(CommServiceTarget *target, CommService *service);
-	CommConnEntry *launch_conn(CommSession *session, CommTarget *target);
-	void release_conn(CommConnEntry *entry);
-
-	CommConnEntry *get_idle_conn(CommTarget *target);
-
-	int send_message(CommConnEntry *entry);
-	int send_message_async(struct iovec vectors[], int cnt,
-						   CommConnEntry *entry);
-
-	int first_timeout_send(CommSession *session);
-	int first_timeout_recv(CommSession *session);
-	int first_timeout(CommSession *session);
-	int next_timeout(CommSession *session);
-
-	int create_service_session(CommConnEntry *entry);
-
-	void handle_read_result(struct poller_result *res);
-	void handle_write_result(struct poller_result *res);
-	void handle_connect_result(struct poller_result *res);
-	void handle_accept_result(struct poller_result *res);
-	void handle_sleep_result(struct poller_result *res);
-	void handle_event_result(struct poller_result *res);
-
-	bool handle_incoming_ssl_connect(CommConnEntry *entry);
-	void handle_incoming_ssl_accept(CommConnEntry *entry);
-	void handle_incoming_idle(struct poller_result *res);
-	void handle_incoming_request(struct poller_result *res);
-	void handle_incoming_reply(struct poller_result *res);
-	void handle_request_result(struct poller_result *res);
-	void handle_reply_result(struct poller_result *res);
-
-/*
-
-//#ifdef __linux__
-	void shutdown_io_service(IOService *service);
-
-	static void *aio_event(const struct io_event *event, void *context);
-//#endif
-*/
-public:
-	virtual ~Communicator() { }
+	friend class IOService;
+	int io_request(IOSession *session);
 };
 
-#endif
+#endif /* _V6_COMMUNICATOR_H_ */
+
+
+
+
+
+
 

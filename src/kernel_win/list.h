@@ -1,4 +1,4 @@
-#ifndef _LINUX_LIST_H
+﻿#ifndef _LINUX_LIST_H
 #define _LINUX_LIST_H
 
 /*
@@ -329,3 +329,4 @@ static inline void slist_splice_init(struct slist_head *list,
 	     pos = slist_entry(pos->member.next, typeof (*pos), member))
 
 #endif
+

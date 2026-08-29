@@ -1,0 +1,10 @@
+ASIO reference probe: strand_dispatch_post_probe
+
+Output:
+  order: 1 2 3
+
+Observations for AsyncCore:
+- Inside a strand handler:
+  - dispatch() runs immediately (inline), before the current handler returns;
+  - post() is queued and runs after the current handler.
+- This is the exact waiting/ready/reschedule state machine of ASIO strand_service.

@@ -29,6 +29,9 @@
 
 #ifdef _WIN32
 #include <io.h>
+/* PlatformSocket.h already pulled in WinSock2; Windows.h only adds the
+ * process/wait facilities used by serve(SOCKET). */
+#include <Windows.h>
 #else
 #include <unistd.h>
 #endif
@@ -98,10 +101,27 @@ int WFServerBase::init(const struct sockaddr *bind_addr, socklen_t addrlen,
 			timeout = this->params.receive_timeout;
 	}
 
+#ifdef _WIN32
+	/* The Windows kernel has no SCTP path; reject it up front. */
+	if (this->params.transport_type == TT_SCTP ||
+		this->params.transport_type == TT_SCTP_SSL)
+	{
+		errno = EPROTONOSUPPORT;
+		return -1;
+	}
+#endif
+
 	if (this->CommService::init(bind_addr, addrlen, -1, timeout) < 0)
 		return -1;
 
-	if (key_file && cert_file)
+#ifdef _WIN32
+	/* CommService::init() resets reliable to 1 (stream); a datagram
+	 * service must opt out after init and before bind(). */
+	if (this->params.transport_type == TT_UDP)
+		this->set_reliable(0);
+#endif
+
+	if (key_file && cert_file && this->params.transport_type != TT_UDP)
 	{
 		SSL_CTX *ssl_ctx = this->new_ssl_ctx(cert_file, key_file);
 
@@ -118,6 +138,7 @@ int WFServerBase::init(const struct sockaddr *bind_addr, socklen_t addrlen,
 	return 0;
 }
 
+#ifndef _WIN32
 int WFServerBase::create_listen_fd()
 {
 	if (this->listen_fd < 0)
@@ -140,7 +161,49 @@ int WFServerBase::create_listen_fd()
 	return this->listen_fd;
 }
 
+#else
+
+SOCKET WFServerBase::create_listen_socket()
+{
+	WSAPROTOCOL_INFOW protocol_info;
+	const struct sockaddr *bind_addr;
+	socklen_t addrlen;
+	SOCKET duplicate;
+	SOCKET pending;
+
+	/* serve(SOCKET) borrowed the caller's descriptor only for the
+	 * synchronous serve() -> bind() -> create_listen_socket() stack
+	 * (01 7.1): the Service takes an independent duplicate and never
+	 * closes the caller's original.  Any other entry point creates a
+	 * fresh socket mirroring CommService::create_listen_socket().
+	 * pending_listen_socket is restored to INVALID_SOCKET before every
+	 * return here. */
+	pending = this->pending_listen_socket;
+	if (pending == INVALID_SOCKET)
+	{
+		this->get_addr(&bind_addr, &addrlen);
+		return WSASocketW(bind_addr->sa_family, SOCK_STREAM, IPPROTO_TCP,
+						  NULL, 0, WSA_FLAG_OVERLAPPED);
+	}
+
+	this->pending_listen_socket = INVALID_SOCKET;
+	if (WSADuplicateSocketW(pending, GetCurrentProcessId(),
+							&protocol_info) < 0)
+		return INVALID_SOCKET;
+
+	duplicate = WSASocketW(FROM_PROTOCOL_INFO, FROM_PROTOCOL_INFO,
+						   FROM_PROTOCOL_INFO, &protocol_info, 0,
+						   WSA_FLAG_OVERLAPPED);
+	return duplicate;
+}
+
+#endif
+
+#ifdef _WIN32
+WFConnection *WFServerBase::new_connection(SOCKET accept_socket)
+#else
 WFConnection *WFServerBase::new_connection(int accept_fd)
+#endif
 {
 	if (++this->conn_count > this->params.max_connections &&
 		this->drain(1) <= 0)
@@ -182,7 +245,9 @@ int WFServerBase::start(const struct sockaddr *bind_addr, socklen_t addrlen,
 			SSL_CTX_free(ssl_ctx);
 	}
 
+#ifndef _WIN32
 	this->listen_fd = -1;
+#endif
 	return -1;
 }
 
@@ -218,6 +283,27 @@ int WFServerBase::start(int family, const char *host, unsigned short port,
 	return ret;
 }
 
+#ifdef _WIN32
+int WFServerBase::serve(SOCKET listen_socket,
+						const char *cert_file, const char *key_file)
+{
+	struct sockaddr_storage ss;
+	socklen_t len = sizeof ss;
+	int ret;
+
+	if (getsockname(listen_socket, (struct sockaddr *)&ss, &len) < 0)
+		return -1;
+
+	/* The caller keeps owning the descriptor (01 7.1); it is only
+	 * borrowed for the synchronous stack and never stored long-term. */
+	this->pending_listen_socket = listen_socket;
+	ret = start((struct sockaddr *)&ss, len, cert_file, key_file);
+	if (this->pending_listen_socket != INVALID_SOCKET)
+		this->pending_listen_socket = INVALID_SOCKET;
+
+	return ret;
+}
+#else
 int WFServerBase::serve(int listen_fd,
 						const char *cert_file, const char *key_file)
 {
@@ -230,10 +316,13 @@ int WFServerBase::serve(int listen_fd,
 	this->listen_fd = listen_fd;
 	return start((struct sockaddr *)&ss, len, cert_file, key_file);
 }
+#endif
 
 void WFServerBase::shutdown()
 {
+#ifndef _WIN32
 	this->listen_fd = -1;
+#endif
 	this->scheduler->unbind(this);
 }
 
@@ -251,4 +340,27 @@ void WFServerBase::wait_finish()
 	if (ssl_ctx)
 		SSL_CTX_free(ssl_ctx);
 }
+
+#ifdef _WIN32
+int WFServerBase::get_listen_addr(struct sockaddr *addr, socklen_t *addrlen) const
+{
+	const struct sockaddr *bind_addr;
+	socklen_t len;
+
+	/* The Service keeps the actual bound address (bind() refreshed it via
+	 * getsockname, 01 7.1), so no live socket needs to be stored here. */
+	this->get_addr(&bind_addr, &len);
+	if (!bind_addr)
+	{
+		errno = ENOTCONN;
+		return -1;
+	}
+
+	if (*addrlen < len)
+		len = *addrlen;
+	memcpy(addr, bind_addr, len);
+	*addrlen = len;
+	return 0;
+}
+#endif
 

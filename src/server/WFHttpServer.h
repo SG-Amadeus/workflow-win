@@ -69,29 +69,18 @@ class WFHttpsServer : public WFHttpServer
 public:
 	WFHttpsServer(const struct WFServerParams *params,
 				  http_process_t proc)
-		: WFHttpServer(params, std::move(proc)), ssl_ctx(NULL)
+		: WFHttpServer(params, std::move(proc))
 	{ }
 
 	WFHttpsServer(http_process_t proc)
 		: WFHttpsServer(&HTTP_SERVER_PARAMS_DEFAULT, std::move(proc))
 	{ }
 
-	~WFHttpsServer()
-	{
-		deinit();
-	}
+	~WFHttpsServer() = default;
 
 	CommSession *new_session(long long seq, CommConnection *conn)
 	{
-		auto *task = __new_https_server_session(seq, conn,
-												this, this->ssl_ctx,
-												this->process);
-
-		task->set_keep_alive(this->params.keep_alive_timeout);
-		task->set_receive_timeout(this->params.receive_timeout);
-		task->get_req()->set_size_limit(this->params.request_size_limit);
-
-		return task;
+		return WFHttpServer::new_session(seq, conn);
 	}
 
 	int start(unsigned short port) = delete;
@@ -121,53 +110,18 @@ public:
 	int start(int family, const char *host, unsigned short port,
 			  const char *cert_file, const char *key_file)
 	{
-		deinit();
-
-		if (init(cert_file, key_file) != 0)
-			return -1;
-
-		return WFHttpServer::start(family, host, port);
+		return WFHttpServer::start(family, host, port,
+								   cert_file, key_file);
 	}
 
 	int start(const struct sockaddr *bind_addr, socklen_t addrlen,
 			  const char *cert_file, const char *key_file)
 	{
-		deinit();
-
-		if (init(cert_file, key_file) != 0)
-			return -1;
-
-		return WFHttpServer::start(bind_addr, addrlen);
+		return WFHttpServer::start(bind_addr, addrlen,
+								   cert_file, key_file);
 	}
 
-	int serve(int listen_fd, const char *cert_file, const char *key_file)
-	{
-		deinit();
-
-		if (init(cert_file, key_file) != 0)
-			return -1;
-
-		return WFHttpServer::serve(listen_fd);
-	}
-
-private:
-	int init(const char *cert, const char *key)
-	{
-		ssl_ctx = new_ssl_ctx(cert, key);
-		return !this->ssl_ctx;
-	}
-
-	void deinit()
-	{
-		if (ssl_ctx)
-		{
-			SSL_CTX_free(ssl_ctx);
-			ssl_ctx = NULL;
-		}
-	}
-
-private:
-	SSL_CTX *ssl_ctx;
+	int serve(int, const char *, const char *) = delete;
 };
 
 #endif

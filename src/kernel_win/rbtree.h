@@ -1,4 +1,4 @@
-/*
+﻿/*
   Red Black Trees
   (C) 1999  Andrea Arcangeli <andrea@suse.de>
   
@@ -94,8 +94,6 @@ static inline struct page * rb_insert_page_cache(struct inode * inode,
 #ifndef	_LINUX_RBTREE_H
 #define	_LINUX_RBTREE_H
 
-#include <stddef.h>
-
 #pragma pack(1)
 struct rb_node
 {
@@ -115,7 +113,7 @@ struct rb_root
 
 #define RB_ROOT (struct rb_root){ (struct rb_node *)0, }
 #define	rb_entry(ptr, type, member) \
-	((type *)((char *)(ptr)-(size_t)(&((type *)0)->member)))
+	((type *)((char *)(ptr)-(unsigned long)(&((type *)0)->member)))
 
 #ifdef __cplusplus
 extern "C"
@@ -150,3 +148,4 @@ static inline void rb_link_node(struct rb_node *node, struct rb_node *parent,
 }
 
 #endif
+

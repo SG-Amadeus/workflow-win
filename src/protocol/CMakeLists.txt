@@ -22,19 +22,13 @@ set(SRC
 )
 
 add_library(${PROJECT_NAME} OBJECT ${SRC})
-if (WIN32)
-	if (MINGW)
-		target_compile_definitions(
-			${PROJECT_NAME} PRIVATE
-		)
-	else ()
+if (WIN32 AND NOT MINGW)
 		target_compile_definitions(
 			${PROJECT_NAME} PRIVATE
 			strdup=_strdup
 			strcasecmp=_stricmp
 			strncasecmp=_strnicmp
 		)
-	endif ()
 endif ()
 
 if (KAFKA STREQUAL "y")
@@ -45,19 +39,15 @@ if (KAFKA STREQUAL "y")
 		KafkaResult.cc
 	)
 	add_library("protocol_kafka" OBJECT ${SRC})
-	set_property(SOURCE KafkaMessage.cc APPEND PROPERTY COMPILE_OPTIONS "-fno-rtti")
-	if (WIN32)
-		if (MINGW)
-			target_compile_definitions(
-				"protocol_kafka" PRIVATE
-			)
-		else ()
+	if (NOT WIN32)
+		set_property(SOURCE KafkaMessage.cc APPEND PROPERTY COMPILE_OPTIONS "-fno-rtti")
+	endif ()
+	if (WIN32 AND NOT MINGW)
 			target_compile_definitions(
 				"protocol_kafka" PRIVATE
 				strdup=_strdup
 				strcasecmp=_stricmp
 				strncasecmp=_strnicmp
 			)
-		endif ()
 	endif ()
 endif ()

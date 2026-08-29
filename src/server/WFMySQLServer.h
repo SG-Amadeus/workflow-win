@@ -49,7 +49,13 @@ public:
 	}
 
 protected:
+#ifdef _WIN32
+	virtual WFConnection *new_connection(SOCKET accept_socket);
+	virtual CommMessageOut *new_connection_bootstrap(CommConnection *connection);
+	virtual void delete_connection_bootstrap(CommMessageOut *message);
+#else
 	virtual WFConnection *new_connection(int accept_fd);
+#endif
 	virtual CommSession *new_session(long long seq, CommConnection *conn);
 };
 

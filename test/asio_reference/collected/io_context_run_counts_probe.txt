@@ -1,0 +1,13 @@
+ASIO reference probe: io_context_run_counts_probe
+
+Output:
+  run_count=3 executed=3
+  run_one=1 executed=1
+  poll_count=2 executed=2
+  poll_one=1 executed=1
+
+Observations for AsyncCore:
+- ASIO run/poll/run_one/poll_one return the number of handlers executed.
+- AsyncCore currently returns int (0/-1) and does not expose these counts.
+  Workflow does not currently consume the counts; keep the int errno-style
+  return unless upper layer later needs counts.
